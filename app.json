@@ -1,0 +1,24 @@
+{
+  "name": "electron-clerk",
+  "description": "a bot that does release notes verification for electron",
+  "scripts": {
+  },
+  "env": {
+    "APP_ID": {
+      "required": true
+    },
+    "PRIVATE_KEY": {
+      "required": true
+    }
+  },
+  "formation": {
+  },
+  "addons": [
+
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}

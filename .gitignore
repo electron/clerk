@@ -1,0 +1,4 @@
+.env
+private.key
+node_modules
+lib
