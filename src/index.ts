@@ -6,11 +6,9 @@ const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
 const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
   const currentPRBody = pr.body;
 
-  const releaseNotesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
+  const notesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
 
-  if (!releaseNotesMatch || !releaseNotesMatch[1]) return null;
-  let note = releaseNotesMatch[1].trim();
-  return note !== OMIT_FROM_RELEASE_NOTES_KEY ? note : null;
+  return notesMatch && notesMatch[1] ? notesMatch[1] : null;
 };
 
 const submitFeedbackForPR = async (
@@ -37,7 +35,7 @@ const submitFeedbackForPR = async (
   }
 
   if (shouldComment) {
-    if (releaseNotes) {
+    if (releaseNotes && (releaseNotes !== OMIT_FROM_RELEASE_NOTES_KEY)) {
       await context.github.issues.createComment(context.repo({
         number: pr.number,
         body: `**Release Notes Persisted**
