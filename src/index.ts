@@ -1,13 +1,16 @@
 import { Application, Context } from 'probot';
 import { WebhookPayloadWithRepository } from 'probot/lib/context'
 
+const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
+
 const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
   const currentPRBody = pr.body;
 
   const releaseNotesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
-  if (!releaseNotesMatch) return null;
 
-  return releaseNotesMatch[1] || null;
+  if (!releaseNotesMatch || !releaseNotesMatch[1]) return null;
+  let note = releaseNotesMatch[1].trim();
+  return note !== OMIT_FROM_RELEASE_NOTES_KEY ? note : null;
 };
 
 const submitFeedbackForPR = async (
