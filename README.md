@@ -13,7 +13,13 @@ notes: this is a human friendly sentence about what this PR does
 notes: removed upstream code that used private Mac APIs
 ```
 
-
 ```markdown
 notes: fixed issue where electron crashes on exit
+```
+
+To tell `clerk` that this PR has no user-facing changes and should not be
+included in release notes:
+
+```markdown
+notes: no-notes
 ```
