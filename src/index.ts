@@ -4,7 +4,7 @@ import { WebhookPayloadWithRepository } from 'probot/lib/context'
 const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
   const currentPRBody = pr.body;
 
-  const releaseNotesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/g.exec(currentPRBody);
+  const releaseNotesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
   if (!releaseNotesMatch) return null;
 
   return releaseNotesMatch[1] || null;
@@ -20,7 +20,7 @@ const submitFeedbackForPR = async (
     await context.github.repos.createStatus(context.repo({
       state: 'failure' as 'failure',
       sha: pr.head.sha,
-      target_url: 'https://github.com/electron/clerk',
+      target_url: 'https://github.com/electron/clerk/blob/master/how.md',
       description: 'Missing release notes',
       context: 'release-notes'
     }));
