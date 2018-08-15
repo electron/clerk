@@ -12,7 +12,7 @@ const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
   const notes = notesMatch && notesMatch[1] ? notesMatch[1] : null;
 
   // check that they didn't leave the default PR template
-  if (notes === 'Notes: <!-- One-line Change Summary Here-->') {
+  if (notes === '<!-- One-line Change Summary Here-->') {
     return null;
   }
   return notes;
