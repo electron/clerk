@@ -1,11 +1,8 @@
 # What is Clerk?
 
 Clerk ensures that release notes can be generated from PRs by looking for
-a release note in the PR description. Notes are allowed in any PR and are
-required in PRs with **`add:`** or **`fix:`** commits.
-
-You can add a note to your PR by adding a single line to its description
-beginning with `notes: `.
+a release note in the PR description. You can add a note to your PR by
+adding a single line to its description beginning with `notes: `.
 
 # Examples
   
