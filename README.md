@@ -1,12 +1,14 @@
 # What is Clerk?
 
-Clerk ensures that release notes can be generated from PRs by looking for a
-[semantic-commit](https://seesparkbox.com/foundry/semantic_commit_messages)-like 
-`notes: ` line in the PR description. Please add this line to make your
-PR pass this check,
+Clerk ensures that release notes can be generated from PRs by looking for
+a release note in the PR description. Notes are allowed in any PR and are
+required in PRs with **`add:`** or **`fix:`** commits.
 
-# How do I use it?
+You can add a note to your PR by adding a single line to its description
+beginning with `notes: `.
 
+# Examples
+  
 * **`commit -m` is for maintainers. `notes:` is for users.**
   Describe the change in user terms.
   ```diff
@@ -17,7 +19,6 @@ PR pass this check,
 
 * Omit notes for changes that users won't care about.
   ```diff
-  - notes: roll libcc
   - notes: only define WIN32_LEAN_AND_MEAN if not already defined
   + notes: no-notes
   ```
