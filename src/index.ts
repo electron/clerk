@@ -1,9 +1,9 @@
 import { Application, Context } from 'probot';
-import { WebhookPayloadWithRepository } from 'probot/lib/context'
+import { WebhookPayloadWithRepository } from 'probot/lib/context';
 
 const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
 
-const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
+const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
   const currentPRBody = pr.body;
 
   const notesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
@@ -18,8 +18,8 @@ const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
 
 const submitFeedbackForPR = async (
   context: Context,
-  pr: WebhookPayloadWithRepository["pull_request"],
-  shouldComment = false
+  pr: WebhookPayloadWithRepository['pull_request'],
+  shouldComment = false,
 ) => {
   const releaseNotes = getReleaseNotes(context.payload.pull_request);
   if (!releaseNotes) {
@@ -28,14 +28,14 @@ const submitFeedbackForPR = async (
       sha: pr.head.sha,
       target_url: 'https://github.com/electron/clerk/blob/master/README.md',
       description: 'Missing release notes',
-      context: 'release-notes'
+      context: 'release-notes',
     }));
   } else {
     await context.github.repos.createStatus(context.repo({
       state: 'success' as 'success',
       sha: pr.head.sha,
       description: 'Release notes found',
-      context: 'release-notes'
+      context: 'release-notes',
     }));
   }
 
@@ -50,7 +50,7 @@ const submitFeedbackForPR = async (
     } else {
       await context.github.issues.createComment(context.repo({
         number: pr.number,
-        body: `**No Release Notes**`
+        body: `**No Release Notes**`,
       }));
     }
   }
