@@ -8,13 +8,14 @@ const getReleaseNotes = (pr: WebhookPayloadWithRepository["pull_request"]) => {
 
   const re = new RegExp(`(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)`, 'gi');
   const notesMatch = currentPRBody.match(re);
-  
+
+  const notes = notesMatch && notesMatch[1] ? notesMatch[1] : null;
+
   // check that they didn't leave the default PR template
-  if (notesMatch === 'Notes: <!-- One-line Change Summary Here-->') {
-    return false;
-  } else {
-    return notesMatch && notesMatch[1] ? notesMatch[1] : null;
+  if (notes === 'Notes: <!-- One-line Change Summary Here-->') {
+    return null;
   }
+  return notes;
 };
 
 const submitFeedbackForPR = async (
