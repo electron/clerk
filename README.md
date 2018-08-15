@@ -1,25 +1,34 @@
-# How do you use release notes?
+# What is Clerk?
 
-All you need to do to make your PR pass the `release-notes` check is add a section
-at the bottom of the PR body with the following format.
+Clerk ensures that release notes can be generated from PRs by looking for a
+[semantic-commit](https://seesparkbox.com/foundry/semantic_commit_messages)-like 
+`notes: ` line in the PR description. Please add this line to make your
+PR pass this check,
 
-```markdown
-notes: this is a human friendly sentence about what this PR does
-```
+# How do I use it?
 
-## Good examples of release notes
+* **`commit -m` is for maintainers. `notes:` is for users.**
+  Describe the change in user terms.
+  ```diff
+  - notes: Bump libcc to latest.
+  - notes: Backport patch to fix Widget::OnSizeConstraintsChanged crash (3.0.x)
+  + notes: Fixed crash in Widget::OnSizeConstraintsChanged.
+  ```
 
-```markdown
-notes: removed upstream code that used private Mac APIs
-```
+* Omit notes for changes that users won't care about.
+  ```diff
+  - notes: roll libcc
+  - notes: only define WIN32_LEAN_AND_MEAN if not already defined
+  + notes: no-notes
+  ```
 
-```markdown
-notes: fixed issue where electron crashes on exit
-```
+* For consistency in notes, use the past tense and capitalize and punctuate your notes.
+  ```diff
+  - notes: fix ipcRemote.sendSync regression introduced in a previous 3.0.0 beta
+  + notes: Fixed ipcRemote.sendSync regression introduced in a previous 3.0.0 beta.
+  - notes: remove upstream code that used private Mac APIs
+  + notes: Removed upstream code that used private Mac APIs.
+  ```
 
-To tell `clerk` that this PR has no user-facing changes and should not be
-included in release notes:
+**Your release bot overlords thank you.**
 
-```markdown
-notes: no-notes
-```
