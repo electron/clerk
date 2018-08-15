@@ -21,7 +21,7 @@ const submitFeedbackForPR = async (
     await context.github.repos.createStatus(context.repo({
       state: 'failure' as 'failure',
       sha: pr.head.sha,
-      target_url: 'https://github.com/electron/clerk/blob/master/how.md',
+      target_url: 'https://github.com/electron/clerk/blob/master/README.md',
       description: 'Missing release notes',
       context: 'release-notes'
     }));
