@@ -6,7 +6,7 @@ const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
 const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
   const currentPRBody = pr.body;
 
-  const notesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
+  const notesMatch = /(?:(?:\r?\n)|^)[Nn]otes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
   const notes = notesMatch && notesMatch[1] ? notesMatch[1] : null;
 
   // check that they didn't leave the default PR template
