@@ -62,7 +62,8 @@ const probotRunner = (app: Application) => {
 
     if (payload.action === 'closed' && payload.pull_request.merged) {
       await submitFeedbackForPR(context, context.payload.pull_request, true);
-    } else if (!payload.pull_request.merged) {
+    } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
+      // Only submit feedback for PRs that aren't merged and are open
       await submitFeedbackForPR(context, context.payload.pull_request);
     }
   });
