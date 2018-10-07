@@ -1,7 +1,11 @@
 import { Application, Context } from 'probot';
 import { WebhookPayloadWithRepository } from 'probot/lib/context';
 
-const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
+const OMIT_FROM_RELEASE_NOTES_KEYS = [
+  'no-notes',
+  'no notes',
+  'no_notes',
+];
 
 const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
   const currentPRBody = pr.body;
@@ -40,7 +44,7 @@ const submitFeedbackForPR = async (
   }
 
   if (shouldComment) {
-    if (releaseNotes && (releaseNotes !== OMIT_FROM_RELEASE_NOTES_KEY)) {
+    if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
       await context.github.issues.createComment(context.repo({
         number: pr.number,
         body: `**Release Notes Persisted**
