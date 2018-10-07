@@ -62,6 +62,10 @@ const submitFeedbackForPR = async (
 
 const probotRunner = (app: Application) => {
   app.on('pull_request', async (context) => {
+    // Only respond to events from electron/electron
+    if (context.payload.repository.owner.name !== 'electron'
+        || context.payload.repository.name !== 'electron') return;
+
     const { payload } = context;
 
     if (payload.action === 'closed' && payload.pull_request.merged) {
