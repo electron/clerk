@@ -63,8 +63,12 @@ const submitFeedbackForPR = async (
 const probotRunner = (app: Application) => {
   app.on('pull_request', async (context) => {
     // Only respond to events from electron/electron
-    if (context.payload.repository.owner.name !== 'electron'
-        || context.payload.repository.name !== 'electron') return;
+    const owner = context.payload.repository.owner.name;
+    const repo = context.payload.repository.name;
+    if (owner !== 'electron' || repo !== 'electron') {
+      console.log(`Not responding to event from: ${owner}/${repo}`);
+      return;
+    }
 
     const { payload } = context;
 
