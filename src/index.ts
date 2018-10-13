@@ -5,6 +5,11 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   'no-notes',
   'no notes',
   'no_notes',
+  'none',
+  'no',
+  'nothing',
+  'empty',
+  'blank',
 ];
 
 const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
