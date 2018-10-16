@@ -6,13 +6,22 @@ const OMIT_FROM_RELEASE_NOTES_KEY = 'no-notes';
 const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
   const currentPRBody = pr.body;
 
-  const notesMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
-  const notes = notesMatch && notesMatch[1] ? notesMatch[1] : null;
+  const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
+  const multilineMatch =
+      /(?:(?:\r?\n)Notes:(?:\r?\n)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(currentPRBody);
+
+  let notes = null;
+  if (onelineMatch && onelineMatch[1]) {
+    notes = onelineMatch[1];
+  } else if (multilineMatch && multilineMatch[1]) {
+    notes = multilineMatch[1];
+  }
 
   // check that they didn't leave the default PR template
   if (notes === '<!-- One-line Change Summary Here-->') {
     return null;
   }
+
   return notes;
 };
 
