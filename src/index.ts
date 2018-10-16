@@ -10,7 +10,7 @@ const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
   const multilineMatch =
       /(?:(?:\r?\n)Notes:(?:\r?\n)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(currentPRBody);
 
-  let notes = null;
+  let notes: string | null = null;
   if (onelineMatch && onelineMatch[1]) {
     notes = onelineMatch[1];
   } else if (multilineMatch && multilineMatch[1]) {
