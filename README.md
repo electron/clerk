@@ -27,6 +27,13 @@ adding a single line to its description beginning with `notes: `.
   - notes: remove upstream code that used private Mac APIs
   + notes: Removed upstream code that used private Mac APIs.
   ```
+  
+* Multi-line release notes
+  ```md
+  Notes:
+  * Line 1
+  * Line 2
+  ```
 
 **Your release bot overlords thank you.**
 
