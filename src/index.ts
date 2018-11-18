@@ -59,11 +59,19 @@ const submitFeedbackForPR = async (
 
   if (shouldComment) {
     if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
+      const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
+      let notes: String;
+      if (splitNotes.length > 0) {
+        notes = splitNotes.map(line => `> ${line}`).join('\n');
+      } else {
+        notes = '> No Release';
+      }
+
       await context.github.issues.createComment(context.repo({
         number: pr.number,
         body: `**Release Notes Persisted**
 
-> ${releaseNotes || 'No Release'}`,
+ ${notes}`,
       }));
     } else {
       await context.github.issues.createComment(context.repo({
