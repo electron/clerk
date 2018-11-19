@@ -60,7 +60,7 @@ const submitFeedbackForPR = async (
   if (shouldComment) {
     if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
       const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
-      let notes: String;
+      let notes: string;
       if (splitNotes.length > 0) {
         notes = splitNotes.map(line => `> ${line}`).join('\n');
       } else {
