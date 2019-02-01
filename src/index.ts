@@ -65,10 +65,7 @@ const submitFeedbackForPR = async (
         notes = splitNotes.map(line => `> ${line}`).join('\n');
 
         // remove any markdown comments
-        const commentMatch = /<!--.*-->/g.exec(notes);
-        if (commentMatch && commentMatch[0]) {
-          notes = notes.replace(commentMatch[0], '');
-        }
+        notes = notes.replace(/<!--.*?-->/g, '');
       } else {
         notes = '> No Release';
       }
