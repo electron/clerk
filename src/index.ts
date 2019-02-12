@@ -26,9 +26,9 @@ const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
     notes = multilineMatch[1];
   }
 
-  // check that they didn't leave the default PR template
-  if (notes === '<!-- One-line Change Summary Here-->') {
-    return null;
+  // remove the default PR template
+  if (notes) {
+    notes = notes.replace(/<!--.*?-->/g, '');
   }
 
   return notes;
@@ -58,30 +58,22 @@ const submitFeedbackForPR = async (
   }
 
   if (shouldComment) {
+    const NO_NOTES_BODY = '**No Release Notes**';
+    const NOTES_LEAD = '**Release Notes Persisted**';
+
+    let body = NO_NOTES_BODY;
     if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
       const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
-      let notes: string;
       if (splitNotes.length > 0) {
-        notes = splitNotes.map(line => `> ${line}`).join('\n');
-
-        // remove any markdown comments
-        notes = notes.replace(/<!--.*?-->/g, '');
-      } else {
-        notes = '> No Release';
+        const notes = splitNotes.map(line => `> ${line}`).join('\n');
+        body = `${NOTES_LEAD}\n\n${notes}`;
       }
-
-      await context.github.issues.createComment(context.repo({
-        number: pr.number,
-        body: `**Release Notes Persisted**
-
- ${notes}`,
-      }));
-    } else {
-      await context.github.issues.createComment(context.repo({
-        number: pr.number,
-        body: `**No Release Notes**`,
-      }));
     }
+
+    await context.github.issues.createComment(context.repo({
+      body,
+      number: pr.number,
+    }));
   }
 };
 
