@@ -10,6 +10,7 @@
   "devDependencies": {
     "@types/bunyan": "^1.8.4",
     "@types/node": "^10.7.0",
+    "jest": "^24.1.0",
     "tslint": "^5.11.0",
     "tslint-config-airbnb": "^5.9.2",
     "typescript": "^3.0.1"
