@@ -3,6 +3,15 @@
 import * as constants from '../constants';
 import * as noteUtils from '../note-utils';
 
+describe('note detection', () => {
+  it('can find a note', () => {
+    expect(noteUtils.findNoteInPRBody(prBodyWithNote)).toEqual('Added a memory leak.');
+  });
+  it('strips comments out of PR bodies', () => {
+    expect(noteUtils.findNoteInPRBody(prBodyWithEmbeddedComment)).toEqual('no-notes');
+  });
+});
+
 describe('comment generation', () => {
   it('knows when to show notes ', () => {
     const note = 'some note';
@@ -30,9 +39,9 @@ describe('comment generation', () => {
   });
 });
 
-
 /* Test PR Bodies */
 
+/* tslint:disable */
 const prBodyWithNote = `#### Description of Change
 
 Does a thing.
@@ -51,6 +60,7 @@ Does a thing.
 
 Notes: Added a memory leak.
 `;
+/* tslint:enable */
 
 // source: https://github.com/electron/electron/pull/16886
 /* tslint:disable */
@@ -62,12 +72,3 @@ See that PR for details.
 Notes: <!-- Please add a one-line description for app developers to read in the release notes, or \`no-notes\` if no notes relevant to app developers. Examples and help on special cases: https://github.com/electron/clerk/blob/master/README.md#examples -->no-notes
 `;
 /* tslint:enable */
-
-describe('note detection', () => {
-  it('can find a note', () => {
-    expect(noteUtils.findNoteInPRBody(prBodyWithNote)).toEqual('Added a memory leak.');
-  });
-  it('strips comments out of PR bodies', () => {
-    expect(noteUtils.findNoteInPRBody(prBodyWithEmbeddedComment)).toEqual('no-notes');
-  });
-});
