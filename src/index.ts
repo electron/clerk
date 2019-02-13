@@ -1,5 +1,6 @@
 import { Application, Context } from 'probot';
 import { WebhookPayloadWithRepository } from 'probot/lib/context';
+import { getReleaseNotes } from './parsing';
 
 const OMIT_FROM_RELEASE_NOTES_KEYS = [
   'no-notes',
@@ -12,34 +13,13 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   'blank',
 ];
 
-const getReleaseNotes = (pr: WebhookPayloadWithRepository['pull_request']) => {
-  const currentPRBody = pr.body;
-
-  const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(currentPRBody);
-  const multilineMatch =
-      /(?:(?:\r?\n)Notes:(?:\r?\n)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(currentPRBody);
-
-  let notes: string | null = null;
-  if (onelineMatch && onelineMatch[1]) {
-    notes = onelineMatch[1];
-  } else if (multilineMatch && multilineMatch[1]) {
-    notes = multilineMatch[1];
-  }
-
-  // remove the default PR template
-  if (notes) {
-    notes = notes.replace(/<!--.*?-->/g, '');
-  }
-
-  return notes;
-};
 
 const submitFeedbackForPR = async (
   context: Context,
   pr: WebhookPayloadWithRepository['pull_request'],
   shouldComment = false,
 ) => {
-  const releaseNotes = getReleaseNotes(context.payload.pull_request);
+  const releaseNotes = getReleaseNotes(context.payload.pull_request.body);
   if (!releaseNotes) {
     await context.github.repos.createStatus(context.repo({
       state: 'failure' as 'failure',
