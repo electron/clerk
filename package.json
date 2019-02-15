@@ -19,6 +19,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "lint": "tslint --project '.'",
     "start": "probot run ./lib/index.js",
     "postinstall": "tsc"
