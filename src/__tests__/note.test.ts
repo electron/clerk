@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import * as constants from '../constants';
 import * as noteUtils from '../note-utils';
 
@@ -13,7 +11,7 @@ describe('note detection', () => {
 });
 
 describe('comment generation', () => {
-  it('knows when to show notes ', () => {
+  it('knows when to show notes', () => {
     const note = 'some note';
     const comment = noteUtils.createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
