@@ -33,13 +33,18 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   'nothing',
 ];
 
-export const createPRCommentFromNotes = (releaseNotes: string | null) => {
+export const createPRCommentFromNotes = (releaseNotes: string | null, targetVersion: string[]) => {
   let body = constants.NO_NOTES_BODY;
   if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
     const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
     if (splitNotes.length > 0) {
       const quoted = splitNotes.map(line => `> ${line}`).join('\n');
-      body = `${constants.NOTES_LEAD}\n\n${quoted}`;
+      body = [
+        constants.NOTES_LEAD,
+        '',
+        `Version: ${targetVersion.join(', ')}`,
+        `Notes:\n${quoted}`,
+      ].join('\n');
     }
   }
 
