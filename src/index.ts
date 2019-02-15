@@ -1,6 +1,7 @@
 import { Application, Context } from 'probot';
 import { WebhookPayloadWithRepository } from 'probot/lib/context';
 import * as noteUtils from './note-utils';
+import { getTargetVersionsForPr } from './pr';
 
 const submitFeedbackForPR = async (
   context: Context,
@@ -26,8 +27,9 @@ const submitFeedbackForPR = async (
   }
 
   if (shouldComment) {
+    const targetVersions = await getTargetVersionsForPr(context, pr);
     await context.github.issues.createComment(context.repo({
-      body: noteUtils.createPRCommentFromNotes(releaseNotes),
+      body: noteUtils.createPRCommentFromNotes(releaseNotes, targetVersions),
       number: pr.number,
     }));
   }

@@ -13,27 +13,42 @@ describe('note detection', () => {
 describe('comment generation', () => {
   it('knows when to show notes', () => {
     const note = 'some note';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = noteUtils.createPRCommentFromNotes(note, ['1.2.3']);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining(note));
   });
 
   it('knows when to show no-notes', () => {
-    expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
+    expect(noteUtils.createPRCommentFromNotes('no-notes', ['1.2.3']))
+      .toEqual(constants.NO_NOTES_BODY);
   });
 
   it('quotes a single-line note', () => {
     const note = 'some note';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = noteUtils.createPRCommentFromNotes(note, ['1.2.3']);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining(`> ${note}`));
   });
 
   it('quotes a multiline note', () => {
     const note = 'line one\nline two';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = noteUtils.createPRCommentFromNotes(note, ['1.2.3']);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining('> line one\n> line two'));
+  });
+
+  it('includes the version', () => {
+    const note = 'some note';
+    const comment = noteUtils.createPRCommentFromNotes(note, ['1.2.3']);
+    expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
+    expect(comment).toEqual(expect.stringContaining('Version: 1.2.3'));
+  });
+
+  it('includes multiple versions', () => {
+    const note = 'some note';
+    const comment = noteUtils.createPRCommentFromNotes(note, ['1.2.3-beta.1', '1.2.3']);
+    expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
+    expect(comment).toEqual(expect.stringContaining('Version: 1.2.3-beta.1, 1.2.3'));
   });
 });
 
