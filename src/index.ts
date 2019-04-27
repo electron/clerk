@@ -2,55 +2,65 @@ const { Toolkit } = require('actions-toolkit');
 import * as noteUtils from './note-utils';
 
 const submitFeedbackForPR = async (
-  context,
+  tools,
   pr: any,
   shouldComment = false,
 ) => {
-  const releaseNotes = noteUtils.findNoteInPRBody(context.payload.pull_request.body);
+  const releaseNotes = noteUtils.findNoteInPRBody(tools.context.payload.pull_request.body);
+  const { owner, repo } = tools.context.repo;
+
   if (!releaseNotes) {
-    await context.github.repos.createStatus(context.repo({
+    await tools.github.repos.createStatus({
+      owner,
+      repo,
       state: 'failure' as 'failure',
       sha: pr.head.sha,
       target_url: 'https://github.com/electron/clerk/blob/master/README.md',
       description: 'Missing release notes',
       context: 'release-notes',
-    }));
+    });
   } else {
-    await context.github.repos.createStatus(context.repo({
+    await tools.github.repos.createStatus({
+      owner,
+      repo,
       state: 'success' as 'success',
       sha: pr.head.sha,
       description: 'Release notes found',
       context: 'release-notes',
-    }));
+    });
   }
 
   if (shouldComment) {
-    await context.github.issues.createComment(context.repo({
+    await tools.github.issues.createComment({
+      owner,
+      repo,
       body: noteUtils.createPRCommentFromNotes(releaseNotes),
       number: pr.number,
-    }));
+    });
   }
 };
 
 Toolkit.run(async (tools: any) => {
-  const { context } = tools;
+  const { payload } = tools.context;
 
-  const owner = context.payload.repository.owner.login;
-  const repo = context.payload.repository.name;
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
 
   if (owner !== 'electron' || repo !== 'electron') {
     tools.log(`Not responding to event from: ${owner}/${repo}`);
     return;
   }
 
-  const { payload } = tools.context;
-
   if (payload.action === 'closed' && payload.pull_request.merged) {
-    await submitFeedbackForPR(context, context.payload.pull_request, true);
+    tools.log(`Checking release notes comment on PR #${payload.pull_request.number}`);
+    await submitFeedbackForPR(tools, payload.pull_request, true);
+    tools.exit.success('PR release notes status evaluated.');
   } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
     // Only submit feedback for PRs that aren't merged and are open
-    await submitFeedbackForPR(context, context.payload.pull_request);
+    tools.log(`Checking & posting release notes comment on PR #${payload.pull_request.number}`);
+    await submitFeedbackForPR(tools, payload.pull_request);
+    tools.exit.success('PR release notes status evaluated.');
   }
 },          {
-  event: 'pull_request',
+  event: 'pull_requests',
 });
