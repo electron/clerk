@@ -1,10 +1,9 @@
-import { Application, Context } from 'probot';
-import { WebhookPayloadWithRepository } from 'probot/lib/context';
+const { Toolkit } = require('actions-toolkit');
 import * as noteUtils from './note-utils';
 
 const submitFeedbackForPR = async (
-  context: Context,
-  pr: WebhookPayloadWithRepository['pull_request'],
+  context,
+  pr: any,
   shouldComment = false,
 ) => {
   const releaseNotes = noteUtils.findNoteInPRBody(context.payload.pull_request.body);
@@ -33,25 +32,25 @@ const submitFeedbackForPR = async (
   }
 };
 
-const probotRunner = (app: Application) => {
-  app.on('pull_request', async (context) => {
-    // Only respond to events from electron/electron
-    const owner = context.payload.repository.owner.login;
-    const repo = context.payload.repository.name;
-    if (owner !== 'electron' || repo !== 'electron') {
-      console.log(`Not responding to event from: ${owner}/${repo}`);
-      return;
-    }
+Toolkit.run(async (tools: any) => {
+  const { context } = tools;
 
-    const { payload } = context;
+  const owner = context.payload.repository.owner.login;
+  const repo = context.payload.repository.name;
 
-    if (payload.action === 'closed' && payload.pull_request.merged) {
-      await submitFeedbackForPR(context, context.payload.pull_request, true);
-    } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
-      // Only submit feedback for PRs that aren't merged and are open
-      await submitFeedbackForPR(context, context.payload.pull_request);
-    }
-  });
-};
+  if (owner !== 'electron' || repo !== 'electron') {
+    tools.log(`Not responding to event from: ${owner}/${repo}`);
+    return;
+  }
 
-module.exports = probotRunner;
+  const { payload } = tools.context;
+
+  if (payload.action === 'closed' && payload.pull_request.merged) {
+    await submitFeedbackForPR(context, context.payload.pull_request, true);
+  } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
+    // Only submit feedback for PRs that aren't merged and are open
+    await submitFeedbackForPR(context, context.payload.pull_request);
+  }
+},          {
+  event: 'pull_request',
+});
