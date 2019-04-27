@@ -1,7 +1,7 @@
-const { Toolkit } = require('actions-toolkit');
+import { Toolkit } from 'actions-toolkit';
 import * as noteUtils from './note-utils';
 
-const submitFeedbackForPR = async (tools, pr: any, shouldComment = false) => {
+const submitFeedbackForPR = async (tools: Toolkit, pr: any, shouldComment = false) => {
   const releaseNotes = noteUtils.findNoteInPRBody(tools.context.payload.pull_request.body);
   const { owner, repo } = tools.context.repo;
 
@@ -37,16 +37,8 @@ const submitFeedbackForPR = async (tools, pr: any, shouldComment = false) => {
 };
 
 Toolkit.run(
-  async (tools: any) => {
+  async (tools: Toolkit) => {
     const { payload } = tools.context;
-
-    const owner = payload.repository.owner.login;
-    const repo = payload.repository.name;
-
-    if (owner !== 'electron' || repo !== 'electron') {
-      tools.log(`Not responding to event from: ${owner}/${repo}`);
-      return;
-    }
 
     if (payload.action === 'closed' && payload.pull_request.merged) {
       tools.log(`Checking release notes comment on PR #${payload.pull_request.number}`);
