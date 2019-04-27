@@ -4,8 +4,7 @@ import * as constants from './constants';
 
 export const findNoteInPRBody = (body: string): string | null => {
   const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
-  const multilineMatch =
-      /(?:(?:\r?\n)Notes:(?:\r?\n)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
+  const multilineMatch = /(?:(?:\r?\n)Notes:(?:\r?\n)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
 
   let notes: string | null = null;
   if (onelineMatch && onelineMatch[1]) {
@@ -35,7 +34,7 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
 
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
   let body = constants.NO_NOTES_BODY;
-  if (releaseNotes && (OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1)) {
+  if (releaseNotes && OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1) {
     const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
     if (splitNotes.length > 0) {
       const quoted = splitNotes.map(line => `> ${line}`).join('\n');

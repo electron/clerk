@@ -1,11 +1,7 @@
 const { Toolkit } = require('actions-toolkit');
 import * as noteUtils from './note-utils';
 
-const submitFeedbackForPR = async (
-  tools,
-  pr: any,
-  shouldComment = false,
-) => {
+const submitFeedbackForPR = async (tools, pr: any, shouldComment = false) => {
   const releaseNotes = noteUtils.findNoteInPRBody(tools.context.payload.pull_request.body);
   const { owner, repo } = tools.context.repo;
 
@@ -40,27 +36,30 @@ const submitFeedbackForPR = async (
   }
 };
 
-Toolkit.run(async (tools: any) => {
-  const { payload } = tools.context;
+Toolkit.run(
+  async (tools: any) => {
+    const { payload } = tools.context;
 
-  const owner = payload.repository.owner.login;
-  const repo = payload.repository.name;
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
 
-  if (owner !== 'electron' || repo !== 'electron') {
-    tools.log(`Not responding to event from: ${owner}/${repo}`);
-    return;
-  }
+    if (owner !== 'electron' || repo !== 'electron') {
+      tools.log(`Not responding to event from: ${owner}/${repo}`);
+      return;
+    }
 
-  if (payload.action === 'closed' && payload.pull_request.merged) {
-    tools.log(`Checking release notes comment on PR #${payload.pull_request.number}`);
-    await submitFeedbackForPR(tools, payload.pull_request, true);
-    tools.exit.success('PR release notes status evaluated.');
-  } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
-    // Only submit feedback for PRs that aren't merged and are open
-    tools.log(`Checking & posting release notes comment on PR #${payload.pull_request.number}`);
-    await submitFeedbackForPR(tools, payload.pull_request);
-    tools.exit.success('PR release notes status evaluated.');
-  }
-},          {
-  event: 'pull_requests',
-});
+    if (payload.action === 'closed' && payload.pull_request.merged) {
+      tools.log(`Checking release notes comment on PR #${payload.pull_request.number}`);
+      await submitFeedbackForPR(tools, payload.pull_request, true);
+      tools.exit.success('PR release notes status evaluated.');
+    } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
+      // Only submit feedback for PRs that aren't merged and are open
+      tools.log(`Checking & posting release notes comment on PR #${payload.pull_request.number}`);
+      await submitFeedbackForPR(tools, payload.pull_request);
+      tools.exit.success('PR release notes status evaluated.');
+    }
+  },
+  {
+    event: 'pull_requests',
+  },
+);
