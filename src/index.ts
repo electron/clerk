@@ -52,6 +52,10 @@ Toolkit.run(
     }
   },
   {
-    event: 'pull_requests',
+    event: [
+      'pull_request.opened', 
+      'pull_request.reopened', 
+      'pull_request.synchronize'
+    ]
   },
 );
