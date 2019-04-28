@@ -6,6 +6,7 @@ const submitFeedbackForPR = async (tools: Toolkit, pr: any, shouldComment = fals
   const { owner, repo } = tools.context.repo;
 
   if (!releaseNotes) {
+    tools.log(`No Release Notes: posting failed check.`);
     await tools.github.repos.createStatus({
       owner,
       repo,
@@ -16,6 +17,7 @@ const submitFeedbackForPR = async (tools: Toolkit, pr: any, shouldComment = fals
       context: 'release-notes',
     });
   } else {
+    tools.log(`Release Notes found: posting successful check.`);
     await tools.github.repos.createStatus({
       owner,
       repo,
@@ -27,6 +29,7 @@ const submitFeedbackForPR = async (tools: Toolkit, pr: any, shouldComment = fals
   }
 
   if (shouldComment) {
+    tools.log(`Creating comment from Release Notes.`);
     await tools.github.issues.createComment({
       owner,
       repo,
@@ -52,10 +55,6 @@ Toolkit.run(
     }
   },
   {
-    event: [
-      'pull_request.opened', 
-      'pull_request.reopened', 
-      'pull_request.synchronize'
-    ]
+    event: ['pull_request.opened', 'pull_request.reopened', 'pull_request.synchronize'],
   },
 );
