@@ -7,16 +7,16 @@ LABEL "com.github.actions.icon"="clipboard"
 LABEL "com.github.actions.color"="gray-dark"
 
 # Copy the package.json and package-lock.json
-COPY package*.json ./
+COPY package.json yarn.lock
 
 # Install dependencies
-RUN npm ci
+RUN yarn
 
 # Copy the rest of your action's code
 COPY . .
 
 # Typescript Compilation
-RUN npm run build
+RUN yarn build
 
 # Run `node /entrypoint.js`
 ENTRYPOINT ["node", "/lib/index.js"]
