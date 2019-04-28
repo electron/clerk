@@ -7,7 +7,7 @@ LABEL "com.github.actions.icon"="clipboard"
 LABEL "com.github.actions.color"="gray-dark"
 
 # Copy the package.json and package-lock.json
-COPY package.json yarn.lock
+COPY package.json yarn.lock ./
 
 # Install dependencies
 RUN yarn
