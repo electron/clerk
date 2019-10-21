@@ -18,7 +18,7 @@ export const findNoteInPRBody = (body: string): string | null => {
     notes = notes.replace(/<!--.*?-->/g, '');
   }
 
-  return notes;
+  return notes.trim();
 };
 
 const OMIT_FROM_RELEASE_NOTES_KEYS = [
