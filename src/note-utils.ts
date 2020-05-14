@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import * as constants from './constants';
+import * as debug from 'debug';
 
 export const findNoteInPRBody = (body: string): string | null => {
   const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
@@ -17,6 +18,8 @@ export const findNoteInPRBody = (body: string): string | null => {
   if (notes) {
     notes = notes.replace(/<!--.*?-->/g, '');
   }
+
+  debug(`Found Notes: ${notes.trim()}`);
 
   return notes.trim();
 };
@@ -43,6 +46,8 @@ export const createPRCommentFromNotes = (releaseNotes: string | null) => {
       body = `${constants.NOTES_LEAD}\n\n${quoted}`;
     }
   }
+
+  debug(`Created PR comment from releaseNotes: ${body}`);
 
   return body;
 };
