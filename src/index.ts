@@ -1,44 +1,62 @@
-import { Toolkit } from 'actions-toolkit';
+import { Application, Context } from 'probot';
 import * as noteUtils from './note-utils';
 
-const submitFeedbackForPR = async (tools: Toolkit, pr: any, shouldComment = false) => {
-  const releaseNotes = noteUtils.findNoteInPRBody(tools.context.payload.pull_request.body);
-  const { owner, repo } = tools.context.repo;
+import d from 'debug';
+const debug = d('note-utils');
+
+const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = false) => {
+  const releaseNotes = noteUtils.findNoteInPRBody(pr.body);
+  const github = context.github;
 
   if (!releaseNotes) {
-    tools.log(`No Release Notes: posting failed check.`);
-    tools.exit.failure('Missing release notes.');
+    debug(`No Release Notes: posting failed check.`);
+    await github.repos.createStatus(
+      context.repo({
+        state: 'failure' as 'failure',
+        sha: pr.head.sha,
+        description: 'Missing release notes',
+        context: 'release-notes',
+      }),
+    );
   } else {
-    tools.log(`Release Notes found: posting successful check.`);
+    debug(`Release Notes found: posting successful check.`);
+    await github.repos.createStatus(
+      context.repo({
+        state: 'success' as 'success',
+        sha: pr.head.sha,
+        description: 'Release notes found',
+        context: 'release-notes',
+      }),
+    );
 
     if (shouldComment) {
-      tools.log(`Creating comment from Release Notes.`);
-      await tools.github.issues.createComment({
-        owner,
-        repo,
-        body: noteUtils.createPRCommentFromNotes(releaseNotes),
-        number: pr.number,
-      });
+      debug(`Creating comment from Release Notes.`);
+      await github.issues.createComment(
+        context.repo({
+          body: noteUtils.createPRCommentFromNotes(releaseNotes),
+          issue_number: pr.number,
+        }),
+      );
     }
-
-    tools.exit.success('Release notes found');
   }
 };
 
-Toolkit.run(
-  async (tools: Toolkit) => {
-    const { payload } = tools.context;
+const probotRunner = (app: Application) => {
+  app.on(
+    ['pull_request.opened', 'pull_request.reopened', 'pull_request.synchronize'],
+    async context => {
+      const pr = context.payload.pull_request;
 
-    if (payload.action === 'closed' && payload.pull_request.merged) {
-      tools.log(`Checking release notes comment on PR #${payload.pull_request.number}`);
-      await submitFeedbackForPR(tools, payload.pull_request, true);
-    } else if (!payload.pull_request.merged && payload.pull_request.state === 'open') {
-      // Only submit feedback for PRs that aren't merged and are open
-      tools.log(`Checking & posting release notes comment on PR #${payload.pull_request.number}`);
-      await submitFeedbackForPR(tools, payload.pull_request);
-    }
-  },
-  {
-    event: ['pull_request.opened', 'pull_request.reopened', 'pull_request.synchronize'],
-  },
-);
+      if (context.payload.action === 'closed' && pr.merged) {
+        debug(`Checking release notes comment on PR #${pr.number}`);
+        await submitFeedbackForPR(context, pr, true);
+      } else if (!pr.merged && pr.state === 'open') {
+        // Only submit feedback for PRs that aren't merged and are open
+        debug(`Checking & posting release notes comment on PR #${pr.number}`);
+        await submitFeedbackForPR(context, pr);
+      }
+    },
+  );
+};
+
+module.exports = probotRunner;
