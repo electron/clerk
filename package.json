@@ -4,9 +4,11 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "actions-toolkit": "^2.0.0"
+    "@octokit/rest": "^17.9.2",
+    "probot": "^9.11.3"
   },
   "devDependencies": {
+    "@types/bunyan": "^1.8.6",
     "@types/jest": "^24.0.11",
     "@types/node": "^11.13.8",
     "debug": "^4.1.1",
@@ -21,6 +23,7 @@
     "build": "tsc",
     "lint": "prettier --list-different \"src/**/*.{ts,tsx}\"",
     "prettier:write": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "start": "DEBUG=* npm run build && probot run ./lib/index.js",
     "test": "jest",
     "test:watch": "jest --watch"
   },
