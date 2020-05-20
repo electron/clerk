@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import * as constants from './constants';
-import Debug from 'debug';
-const debug = Debug('note-utils');
+import d from 'debug';
+const debug = d('note-utils');
 
 export const findNoteInPRBody = (body: string): string | null => {
   const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
