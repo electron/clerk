@@ -42,7 +42,7 @@ const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = fa
 };
 
 const probotRunner = (app: Application) => {
-  app.on('pull_request', async (context) => {
+  app.on('pull_request', async context => {
     const pr = context.payload.pull_request;
 
     if (context.payload.action === 'closed' && pr.merged) {

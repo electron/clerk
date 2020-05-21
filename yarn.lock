@@ -362,11 +362,11 @@
     lru-cache "^5.1.1"
 
 "@octokit/auth-token@^2.4.0":
-  version "2.4.0"
-  resolved "https://registry.yarnpkg.com/@octokit/auth-token/-/auth-token-2.4.0.tgz#b64178975218b99e4dfe948253f0673cbbb59d9f"
-  integrity sha512-eoOVMjILna7FVQf96iWc3+ZtE/ZT6y8ob8ZzcqKY1ibSQCnu4O/B7pJvzMx5cyZ/RjAff6DAdEb0O0Cjcxidkg==
+  version "2.4.1"
+  resolved "https://registry.yarnpkg.com/@octokit/auth-token/-/auth-token-2.4.1.tgz#375d79eebd03750e6a9b0299e80b8167c7c85655"
+  integrity sha512-NB81O5h39KfHYGtgfWr2booRxp2bWOJoqbWwbyUg2hw6h35ArWYlAST5B3XwAkbdcx13yt84hFXyFP5X0QToWA==
   dependencies:
-    "@octokit/types" "^2.0.0"
+    "@octokit/types" "^4.0.1"
 
 "@octokit/core@^2.4.3":
   version "2.5.3"
@@ -399,12 +399,12 @@
     universal-user-agent "^5.0.0"
 
 "@octokit/plugin-enterprise-compatibility@^1.2.1":
-  version "1.2.2"
-  resolved "https://registry.yarnpkg.com/@octokit/plugin-enterprise-compatibility/-/plugin-enterprise-compatibility-1.2.2.tgz#a30b635b63760e1504e57af5cf54da058b32a1de"
-  integrity sha512-LjESzkcoQHm1JN3drgjttbSk5fYNI8EPtcAiDqpnok0oL69vWIb5tcjyKrg7fPwzyRl/+A+UQbkIOsG2LJh09w==
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/@octokit/plugin-enterprise-compatibility/-/plugin-enterprise-compatibility-1.2.3.tgz#103754ce6f220e9e5a198dbe3005a9c8f79c673a"
+  integrity sha512-vVMCtpZBKq1bE94IvI9GtH5qyI7fxCg8yzSn2pct8W/TxqzN+6HLtfxKFGtPcuUBFni+pEbZ+zmyY3h/uO2Zwg==
   dependencies:
     "@octokit/request-error" "^2.0.0"
-    "@octokit/types" "^2.0.1"
+    "@octokit/types" "^4.0.1"
 
 "@octokit/plugin-paginate-rest@^1.1.1":
   version "1.1.2"
@@ -442,19 +442,19 @@
     deprecation "^2.3.1"
 
 "@octokit/plugin-retry@^3.0.1":
-  version "3.0.1"
-  resolved "https://registry.yarnpkg.com/@octokit/plugin-retry/-/plugin-retry-3.0.1.tgz#4f17e4349b89754fd06951b548f08e2d8e7dd311"
-  integrity sha512-X+VALkeYyE4XGMHOoOnRS1/OvwvleZ2Xe3yxshaAKJrA4pbjBYptDx7IAY9xQj5JYY9vlCKUsXEZMWLRNxfViw==
+  version "3.0.2"
+  resolved "https://registry.yarnpkg.com/@octokit/plugin-retry/-/plugin-retry-3.0.2.tgz#1055728d1d0e25287ef3cc30bf3321c942bf44a4"
+  integrity sha512-k7xl2WLfLP7WirRXRHtCq5xGAIXBZHV9X3HVUJhPwe8/N8vVzxPcnnnBL5NpEep/+GQqFRdYxrkgz68VY3z2wA==
   dependencies:
-    "@octokit/types" "^2.0.1"
+    "@octokit/types" "^4.0.1"
     bottleneck "^2.15.3"
 
 "@octokit/plugin-throttling@^3.0.0":
-  version "3.2.0"
-  resolved "https://registry.yarnpkg.com/@octokit/plugin-throttling/-/plugin-throttling-3.2.0.tgz#e900bb4e5976ea45ccb2c32c068d09c28fed31ef"
-  integrity sha512-4tyTbRFu7OTJFssdj6j74PdvJ8LqMVBFYeRd4+jBJm68LbqmgHunujwvyfjHGp2L+HwC69/BT36PKRWF131Vdg==
+  version "3.2.1"
+  resolved "https://registry.yarnpkg.com/@octokit/plugin-throttling/-/plugin-throttling-3.2.1.tgz#5ed5eaa13444c52e845f52d02974f489e3fda408"
+  integrity sha512-CGr3IagYZLLV3pFgpTQUthQSS5K3BkHLlG8yXK+Op3UKBkYrTf+Y9pCebrDxt60d+VTQ1oxXCx+LVLYY3IhBZQ==
   dependencies:
-    "@octokit/types" "^2.0.1"
+    "@octokit/types" "^4.0.1"
     bottleneck "^2.15.3"
 
 "@octokit/request-error@^1.0.2":
@@ -467,11 +467,11 @@
     once "^1.4.0"
 
 "@octokit/request-error@^2.0.0":
-  version "2.0.0"
-  resolved "https://registry.yarnpkg.com/@octokit/request-error/-/request-error-2.0.0.tgz#94ca7293373654400fbb2995f377f9473e00834b"
-  integrity sha512-rtYicB4Absc60rUv74Rjpzek84UbVHGHJRu4fNVlZ1mCcyUPPuzFfG9Rn6sjHrd95DEsmjSt1Axlc699ZlbDkw==
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@octokit/request-error/-/request-error-2.0.1.tgz#49bd71e811daffd5bdd06ef514ca47b5039682d1"
+  integrity sha512-5lqBDJ9/TOehK82VvomQ6zFiZjPeSom8fLkFVLuYL3sKiIb5RB8iN/lenLkY7oBmyQcGP7FBMGiIZTO8jufaRQ==
   dependencies:
-    "@octokit/types" "^2.0.0"
+    "@octokit/types" "^4.0.1"
     deprecation "^2.0.0"
     once "^1.4.0"
 
