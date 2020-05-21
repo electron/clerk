@@ -42,21 +42,18 @@ const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = fa
 };
 
 const probotRunner = (app: Application) => {
-  app.on(
-    ['pull_request.opened', 'pull_request.reopened', 'pull_request.synchronize'],
-    async context => {
-      const pr = context.payload.pull_request;
+  app.on('pull_request', async (context) => {
+    const pr = context.payload.pull_request;
 
-      if (context.payload.action === 'closed' && pr.merged) {
-        debug(`Checking release notes comment on PR #${pr.number}`);
-        await submitFeedbackForPR(context, pr, true);
-      } else if (!pr.merged && pr.state === 'open') {
-        // Only submit feedback for PRs that aren't merged and are open
-        debug(`Checking & posting release notes comment on PR #${pr.number}`);
-        await submitFeedbackForPR(context, pr);
-      }
-    },
-  );
+    if (context.payload.action === 'closed' && pr.merged) {
+      debug(`Checking release notes comment on PR #${pr.number}`);
+      await submitFeedbackForPR(context, pr, true);
+    } else if (!pr.merged && pr.state === 'open') {
+      // Only submit feedback for PRs that aren't merged and are open
+      debug(`Checking & posting release notes comment on PR #${pr.number}`);
+      await submitFeedbackForPR(context, pr);
+    }
+  });
 };
 
 module.exports = probotRunner;
