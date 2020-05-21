@@ -41,9 +41,9 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
   let body = constants.NO_NOTES_BODY;
   if (releaseNotes && OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1) {
-    const splitNotes = releaseNotes.split('\n').filter(line => line !== '');
+    const splitNotes = releaseNotes.split('\n').filter((line) => line !== '');
     if (splitNotes.length > 0) {
-      const quoted = splitNotes.map(line => `> ${line}`).join('\n');
+      const quoted = splitNotes.map((line) => `> ${line}`).join('\n');
       body = `${constants.NOTES_LEAD}\n\n${quoted}`;
     }
   }
