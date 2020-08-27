@@ -26,21 +26,21 @@ export const findNoteInPRBody = (body: string): string | null => {
 };
 
 const OMIT_FROM_RELEASE_NOTES_KEYS = [
-  'blank',
-  'empty',
-  'no notes',
-  'no',
-  'no-notes',
-  'no_notes',
-  '`no-notes`',
-  '`no notes`',
-  'none',
-  'nothing',
+  /^blank.?$/,
+  /^empty.?$/,
+  /^no notes.?$/,
+  /^no.?$/,
+  /^no-notes.?$/,
+  /^no_notes.?$/,
+  /^`no-notes.?$`/,
+  /^`no notes.?$`/,
+  /^none.?$/,
+  /^nothing.?$/,
 ];
 
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
   let body = constants.NO_NOTES_BODY;
-  if (releaseNotes && OMIT_FROM_RELEASE_NOTES_KEYS.indexOf(releaseNotes) === -1) {
+  if (releaseNotes && !OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(releaseNotes))) {
     const splitNotes = releaseNotes.split('\n').filter((line) => line !== '');
     if (splitNotes.length > 0) {
       const quoted = splitNotes.map((line) => `> ${line}`).join('\n');
