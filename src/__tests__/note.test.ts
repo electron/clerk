@@ -53,6 +53,21 @@ describe('comment generation', () => {
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining('> line one\n> line two'));
   });
+
+  it('can handle different multiline note formatting', () => {
+    const note = noteUtils.findNoteInPRBody(prBodyWithMultilineNotes);
+    const comment = noteUtils.createPRCommentFromNotes(note);
+    expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
+
+    const expected = `
+> * Fixes the following issues for frameless when maximized on Windows:
+> * fix unreachable task bar when auto hidden with position top
+> * fix 1px extending to secondary monitor
+> * fix 1px overflowing into taskbar at certain resolutions
+> * fix white line on top of window under 4k resolutions`;
+
+    expect(comment).toEqual(expect.stringContaining(expected));
+  });
 });
 
 /* Test PR Bodies */
@@ -121,5 +136,32 @@ Fixes something!
 cc @nornagon @MarshallOfSound 
 
 Notes: no-notes but actually a note.
+`;
+/* tslint:enable */
+
+// Source: https://github.com/electron/electron/pull/25219
+/* tslint:disable */
+const prBodyWithMultilineNotes = `#### Description of Change
+
+Backports https://github.com/electron/electron/pull/25052
+
+#### Checklist
+<!-- Remove items that do not apply. For completed items, change [ ] to [x]. -->
+
+- [x] PR description included and stakeholders cc'd
+- [x] \`npm test\` passes
+- [x] PR title follows semantic [commit guidelines](https://github.com/electron/electron/blob/master/docs/development/pull-requests.md#commit-message-guidelines)
+- [x] [PR release notes](https://github.com/electron/clerk/blob/master/README.md) describe the change in a way relevant to app developers, and are [capitalized, punctuated, and past tense](https://github.com/electron/clerk/blob/master/README.md#examples).
+- [x] This is **NOT A BREAKING CHANGE**. Breaking changes may not be merged to master until 11-x-y is branched.
+
+#### Release Notes
+
+Notes:
+
+* Fixes the following issues for frameless when maximized on Windows:
+* fix unreachable task bar when auto hidden with position top
+* fix 1px extending to secondary monitor
+* fix 1px overflowing into taskbar at certain resolutions
+* fix white line on top of window under 4k resolutions
 `;
 /* tslint:enable */
