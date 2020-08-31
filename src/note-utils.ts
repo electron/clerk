@@ -15,14 +15,14 @@ export const findNoteInPRBody = (body: string): string | null => {
     notes = multilineMatch[1];
   }
 
-  // remove the default PR template
   if (notes) {
+    debug(`Found Notes: ${JSON.stringify(notes.trim())}`);
+
+    // Remove the default PR template.
     notes = notes.replace(/<!--.*?-->/g, '');
   }
 
-  debug(`Found Notes: ${JSON.stringify(notes.trim())}`);
-
-  return notes.trim();
+  return notes ? notes.trim() : notes;
 };
 
 const OMIT_FROM_RELEASE_NOTES_KEYS = [

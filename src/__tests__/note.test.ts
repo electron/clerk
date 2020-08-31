@@ -25,6 +25,13 @@ describe('comment generation', () => {
     expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
   });
 
+  it('can handle missing notes', () => {
+    const note = noteUtils.findNoteInPRBody('oh no');
+    expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
+
+    expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
+  });
+
   it('does not false positively match no-notes', () => {
     const surpriseNote = noteUtils.findNoteInPRBody(prBodyWithSurpriseNote);
     const comment = noteUtils.createPRCommentFromNotes(surpriseNote);
