@@ -26,16 +26,16 @@ export const findNoteInPRBody = (body: string): string | null => {
 };
 
 const OMIT_FROM_RELEASE_NOTES_KEYS = [
-  /^blank.?$/,
-  /^empty.?$/,
-  /^no notes.?$/,
-  /^no.?$/,
-  /^no-notes.?$/,
-  /^no_notes.?$/,
-  /^`no-notes.?$`/,
-  /^`no notes.?$`/,
-  /^none.?$/,
-  /^nothing.?$/,
+  /^blank.?$/i,
+  /^empty.?$/i,
+  /^no notes.?$/i,
+  /^no.?$/i,
+  /^no-notes.?$/i,
+  /^no_notes.?$/i,
+  /^`no-notes.?$`/i,
+  /^`no notes.?$`/i,
+  /^none.?$/i,
+  /^nothing.?$/i,
 ];
 
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
