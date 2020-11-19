@@ -22,6 +22,19 @@ export const findNoteInPRBody = (body: string): string | null => {
     notes = notes.replace(/<!--.*?-->/g, '');
   }
 
+  if (notes) {
+    const sanitizeMap = new Map([
+      ['<', '&lt;'],
+      ['>', '&gt;'],
+    ]);
+    for (const [oldVal, newVal] of sanitizeMap.entries()) {
+      // TODO: use replaceAll when @node/types catches up to 15
+      while (notes.includes(oldVal)) {
+        notes = notes.replace(oldVal, newVal);
+      }
+    }
+  }
+
   return notes ? notes.trim() : notes;
 };
 
