@@ -8,6 +8,11 @@ describe('note detection', () => {
   it('strips comments out of PR bodies', () => {
     expect(noteUtils.findNoteInPRBody(prBodyWithEmbeddedComment)).toEqual('no-notes');
   });
+  it('strips embedded html out of note bodies', () => {
+    const note = noteUtils.findNoteInPRBody(prBodyWithEmbeddedHtmlInNote);
+    expect(note).toContain('&lt;input file="type"&gt;');
+    expect(note).not.toContain('<input file="type">');
+  });
 });
 
 describe('comment generation', () => {
@@ -163,5 +168,16 @@ Notes:
 * fix 1px extending to secondary monitor
 * fix 1px overflowing into taskbar at certain resolutions
 * fix white line on top of window under 4k resolutions
+`;
+/* tslint:enable */
+
+// Source: https://github.com/electron/electron/pull/26217
+/* tslint:disable */
+const prBodyWithEmbeddedHtmlInNote = `Backport of #25030
+
+See that PR for details.
+
+
+Notes: Fixed an issue where packages could not be selected with <input file="type"> on macOS.
 `;
 /* tslint:enable */
