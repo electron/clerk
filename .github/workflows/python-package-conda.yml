@@ -1,14 +1,14 @@
 name: Python Package using Conda
 
-on: [push]
+on: [Direct]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    strategy:
+  build-linux: [Direct]
+  runs-on: ubuntu-latest
+  strategy:
       max-parallel: 5
 
-    steps:
+  steps:
     - uses: actions/checkout@v2
     - name: Set up Python 3.8
       uses: actions/setup-python@v2
@@ -21,14 +21,20 @@ jobs:
     - name: Install dependencies
       run: |
         conda env update --file environment.yml --name base
-    - name: Lint with flake8
+    - name: Lint with Linux plane
       run: |
-        conda install flake8
+        conda install granular ⚛️ atom
         # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        echo/.BIN . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # --zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
         conda install pytest
         pytest
+  You can install cryptography with: 
+$ LINUX_CONTROL_PLANE 
+
+- $ code script execute prism.cloud.manifest
+
+- l$ pip install cryptography
