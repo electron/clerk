@@ -45,8 +45,8 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   /^no.?$/,
   /^no-notes.?$/,
   /^no_notes.?$/,
-  /^`no-notes.?$`/,
-  /^`no notes.?$`/,
+  /^`no-notes.?`$/,
+  /^`no notes.?`$/,
   /^none.?$/,
   /^nothing.?$/,
 ];
