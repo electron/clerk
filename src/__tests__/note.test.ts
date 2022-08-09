@@ -30,6 +30,11 @@ describe('comment generation', () => {
     expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
   });
 
+  it('shows no-notes when a HTML comment is left in the PR', () => {
+    const note = noteUtils.findNoteInPRBody(prBodyWithBadCase);
+    expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
+  });
+
   it('can handle missing notes', () => {
     const note = noteUtils.findNoteInPRBody('oh no');
     expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
@@ -106,6 +111,17 @@ See that PR for details.
 
 
 Notes: <!-- Please add a one-line description for app developers to read in the release notes, or \`no-notes\` if no notes relevant to app developers. Examples and help on special cases: https://github.com/electron/clerk/blob/master/README.md#examples -->no-notes
+`;
+/* tslint:enable */
+
+// source: https://github.com/electron/electron/pull/35173
+/* tslint:disable */
+const prBodyWithBadCase = `Backport of #34723
+
+See that PR for details.
+
+
+Notes: <!-- Please add a one-line description for app developers to read in the release notes, or 'none' if no notes relevant to app developers. Examples and help on special cases: https://github.com/electron/clerk/blob/master/README.md#examples -->None
 `;
 /* tslint:enable */
 
