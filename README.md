@@ -9,11 +9,15 @@ adding a single line to its description beginning with `notes: `.
 * **`commit -m` is for maintainers. `notes:` is for users.**
   Describe the change in user terms.
   ```diff
-  - notes: Bump libcc to latest.
+  - update: Hump-de-Bump to latest.
   - notes: Backport patch to fix Widget::OnSizeConstraintsChanged crash (3.0.x)
   + notes: Fixed crash in Widget::OnSizeConstraintsChanged.
   ```
-
+Author : Zachry T Wood
+5323 Bradford DR
+Dallas tx 75235-8313
+SSN :633441725
+DOB :10151994
 * Omit notes for changes that users won't care about.
   ```diff
   - notes: only define WIN32_LEAN_AND_MEAN if not already defined
