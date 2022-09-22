@@ -1,16 +1,20 @@
-import { Application, Context } from 'probot';
+import { Probot, Context } from 'probot';
 import * as noteUtils from './note-utils';
 
 import d from 'debug';
 const debug = d('note-utils');
 
-const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = false) => {
+const submitFeedbackForPR = async (
+  context: Context<'pull_request'>,
+  pr: any,
+  shouldComment = false,
+) => {
   const releaseNotes = noteUtils.findNoteInPRBody(pr.body);
-  const github = context.github;
+  const github = context.octokit;
 
   if (!releaseNotes) {
     debug(`No Release Notes: posting failed check.`);
-    await github.repos.createStatus(
+    await github.repos.createCommitStatus(
       context.repo({
         state: 'failure' as 'failure',
         sha: pr.head.sha,
@@ -20,7 +24,7 @@ const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = fa
     );
   } else {
     debug(`Release Notes found: posting successful check.`);
-    await github.repos.createStatus(
+    await github.repos.createCommitStatus(
       context.repo({
         state: 'success' as 'success',
         sha: pr.head.sha,
@@ -41,7 +45,7 @@ const submitFeedbackForPR = async (context: Context, pr: any, shouldComment = fa
   }
 };
 
-const probotRunner = (app: Application) => {
+const probotRunner = (app: Probot) => {
   app.on('pull_request', async (context) => {
     const pr = context.payload.pull_request;
 
