@@ -1,0 +1,26 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@vac593985615ec2ede58e132d2e21d2b1cbd6127c  # tag: v3
+    - name: Setup Node.js
+      uses: actions/setup-node@1f8c6b94b26d0feae1e387ca63ccbdc44d27b561  # tag: v2
+      with:
+        node_version: current
+    - name: Lint
+      run: |
+        npm install
+        npm run lint

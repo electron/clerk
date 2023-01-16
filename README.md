@@ -1,3 +1,5 @@
+[![Test](https://github.com/electron/clerk/actions/workflows/test.yml/badge.svg)](https://github.com/electron/clerk/actions/workflows/test.yml)
+
 # What is Clerk?
 
 Clerk ensures that release notes can be generated from PRs by looking for
