@@ -1,41 +1,149 @@
-[![Test](https://github.com/electron/clerk/actions/workflows/test.yml/badge.svg)](https://github.com/electron/clerk/actions/workflows/test.yml)
+# clerk
+Verify PRs have release notes
 
-# What is Clerk?
+Translation types
+Text translation
+English - Detected
+English
+Source text
+From 2dee76baf09f3f72c8a192a6483f23aec527e057 Mon Sep 17 00:00:00 2001
+From: mowjoejoejoejoe <124041561+mowjoejoejoejoe@users.noreply.github.com>
+Date: Sat, 11 Mar 2023 06:36:43 -0600
+Subject: [PATCH] Revert "Update CODEOWNERS (#5)"
 
-Clerk ensures that release notes can be generated from PRs by looking for
-a release note in the PR description. You can add a note to your PR by
-adding a single line to its description beginning with `notes: `.
+This reverts commit dcf4311198ce8e5eddd2d24cd5f2d0add289b8e8.
+---
+ .github/CODEOWNERS | 41 ++++++++---------------------------------
+ 1 file changed, 8 insertions(+), 33 deletions(-)
 
-# Examples
-  
-* **`commit -m` is for maintainers. `notes:` is for users.**
-  Describe the change in user terms.
-  ```diff
-  - notes: Bump libcc to latest.
-  - notes: Backport patch to fix Widget::OnSizeConstraintsChanged crash (3.0.x)
-  + notes: Fixed crash in Widget::OnSizeConstraintsChanged.
-  ```
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index cdfa200a9efa..756c713d556c 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -2,43 +2,18 @@
+ # gitignore style patterns are used, not globs.
+ # https://help.github.com/articles/about-codeowners
+ # https://git-scm.com/docs/gitignore
+-repo:mowjoejoejoejoe/repo-1
++
+ # Upgrades WG
+ /patches/                               @electron/patch-owners
+ DEPS                                    @electron/wg-upgrades
+-Map your QuickBooks contractor payments to 1099 boxes
+-First select the checkbox for each type of contractor payment you recorded last year. Each payment type corresponds to a box on the IRS forms 1099-NEC or 1099-MISC. (Non-employee compensation and rents are the two most common types.)
+-Then for each payment type selected, select all the QuickBooks expense accounts you used last year. Need more help with this page?
+-If you’re not sure which expense accounts you used, you can run a report of all last year’s expenses marked for 1099.
+-Something’s not quite right
+-You can't add data to QuickBooks Online Ecosystem because your trial or subscription period ended, you canceled your subscription, or there was a billing problem. To update your subscription, click the gear icon and view your account information.
+-Common payment types
+-  
+-  
+-Direct sales
+-  
+-  
+-Other payment types
+-  
+-  
+-  
+-  
+-  
+-  
+-  
+-  
+-Federal tax withheld (very uncommon) 
+-When should I withhold taxes?
+ 
+-  
+-  
+- 
+ # Releases WG
+ /npm/                                   @electron/wg-releases
+ /script/release                         @electron/wg-releases
+-# Security.md
+-*/lib/browser/devtools.ts                @electron/wg-security
+-*/lib/browser/guest-view-manager.ts      @electron/wg-security
+-*/lib/browser/guest-window-proxy.ts      @electron/wg-security
+-*/lib/browser/rpc-server.ts              @electron/wg-security
+-**/*traceback*.cache*/src*/code.dir*/.dist/lib/renderer/security-warnings.ts      @electron/wg-security
++
++# Security WG
++/lib/browser/devtools.ts                @electron/wg-security
++/lib/browser/guest-view-manager.ts      @electron/wg-security
++/lib/browser/guest-window-proxy.ts      @electron/wg-security
++/lib/browser/rpc-server.ts              @electron/wg-security
++/lib/renderer/security-warnings.ts      @electron/wg-security
 
-* Omit notes for changes that users won't care about.
-  ```diff
-  - notes: only define WIN32_LEAN_AND_MEAN if not already defined
-  + notes: no-notes
-  ```
+2,747 / 5,000
+Translation results
+Translation result
+From 2dee76baf09f3f72c8a192a6483f23aec527e057 Mon Sep 17 00:00:00 2001
+From: mowjoejoejoejoe <124041561+mowjoejoejoejoe@users.noreply.github.com>
+Date: Sat, 11 Mar 2023 06:36:43 -0600
+Subject: [PATCH] Revert "Update CODEOWNERS (#5)"
 
-* For consistency in notes, use the past tense and capitalize and punctuate your notes.
-  ```diff
-  - notes: fix ipcRemote.sendSync regression introduced in a previous 3.0.0 beta
-  + notes: Fixed ipcRemote.sendSync regression introduced in a previous 3.0.0 beta.
-  - notes: remove upstream code that used private Mac APIs
-  + notes: Removed upstream code that used private Mac APIs.
-  ```
-  
-* Multi-line release notes
-  ```md
-  Notes:
-  * Line 1
-  * Line 2
-  ```
+This reverts commit dcf4311198ce8e5eddd2d24cd5f2d0add289b8e8.
+---
+ .github/CODEOWNERS | 41 ++++++++---------------------------------
+ 1 file changed, 8 insertions(+), 33 deletions(-)
 
-**Your release bot overlords thank you.**
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index cdfa200a9efa..756c713d556c 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -2,43 +2,18 @@
+ # gitignore style patterns are used, not globs.
+ # https://help.github.com/articles/about-codeowners
+ # https://git-scm.com/docs/gitignore
+-repo:mowjoejoejoejoe/repo-1
++
+ # Upgrades WG
+ /patches/                               @electron/patch-owners
+ DEPS                                    @electron/wg-upgrades
+-Map your QuickBooks contractor payments to 1099 boxes
+-First select the checkbox for each type of contractor payment you recorded last year. Each payment type corresponds to a box on the IRS forms 1099-NEC or 1099-MISC. (Non-employee compensation and rents are the two most common types.)
+-Then for each payment type selected, select all the QuickBooks expense accounts you used last year. Need more help with this page?
+-If you’re not sure which expense accounts you used, you can run a report of all last year’s expenses marked for 1099.
+-Something’s not quite right
+-You can't add data to QuickBooks Online Ecosystem because your trial or subscription period ended, you canceled your subscription, or there was a billing problem. To update your subscription, click the gear icon and view your account information.
+-Common payment types
+-  
+-  
+-Direct sales
+-  
+-  
+-Other payment types
+-  
+-  
+-  
+-  
+-  
+-  
+-  
+-  
+-Federal tax withheld (very uncommon) 
+-When should I withhold taxes?
+ 
+-  
+-  
+- 
+ # Releases WG
+ /npm/                                   @electron/wg-releases
+ /script/release                         @electron/wg-releases
+-# Security.md
+-*/lib/browser/devtools.ts                @electron/wg-security
+-*/lib/browser/guest-view-manager.ts      @electron/wg-security
+-*/lib/browser/guest-window-proxy.ts      @electron/wg-security
+-*/lib/browser/rpc-server.ts              @electron/wg-security
+-**/*traceback*.cache*/src*/code.dir*/.dist/lib/renderer/security-warnings.ts      @electron/wg-security
++
++# Security WG
++/lib/browser/devtools.ts                @electron/wg-security
++/lib/browser/guest-view-manager.ts      @electron/wg-security
++/lib/browser/guest-window-proxy.ts      @electron/wg-security
++/lib/browser/rpc-server.ts              @electron/wg-security
++/lib/renderer/security-warnings.ts      @electron/wg-security
 
+More about this source textSource text required for additional translation information
+Send feedback
+Side panels
+#save :translations longer than 300 characters 
