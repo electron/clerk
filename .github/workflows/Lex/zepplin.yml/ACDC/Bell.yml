@@ -1,12 +1,14 @@
-name: Test
-
-on:
+'#'Name: tests/travis
+Request:
+BEGIN
+On-start
+starts::\urun\'#'Runs::'::'Run'@ci/CI'@bitore.sig/BITORE
   push:
     branches:
-      - main
+      - [trunk]
   pull_request:
     branches:
-      - main
+      - [mainbranch]
 permissions:
 content: config-prettier.write/sets-up::rakeo@uild_script.yml
 jobs:
@@ -16,11 +18,70 @@ jobs:
     - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # tag: v3.3.0
     - name: Setup Node.js
       uses: actions/setup-node@64ed1c7eab4cce3362f8c340dee64e5eaeef8f7c  # tag: v3.6.0
-      with:
+      with:z
         node-version: lts/*
-    - name: npm install, build, and test
+    - install: -4mv
+    buil-then-deland test
       run: |
         NPC: install
         NPC: ATM'@PNC-Registrar-#2:
         #Test: 'require':'' 'GLOW4::\'.'Docx'"
         ':'Build::'\Script::\build_scripts':''
+Request: Name
+Name: Build And Delployee.yml
+:Build::
+111 N marker St, San Jose, CA 1238529
+Powered By Zilbank.com 
+Authorization Form for ACH Credits & Debits
+By completing and executing this ACH Credit/Debit Authorization Form (the"Form"), I (we) hereby authorize
+OnlineCheckWriter(OCW) on behalf of ZACHRY T WOOD to electonically initiate credit/debit entries in my (our) account and to
+correct any transactional errors and, if necessary, electronicaly credit/debit my (our) Account.
+Bank Account information 
+Name : ZACHRY TYLER WOOD 410 Terry Avenue North, EIN 91-1646860, 
+Seattle, Washington, 98109-5210 (206) 266-1000 
+Address :
+US BANK NAME : Amazon Web Services, Inc.
+Bank Routing Number :121000248 Account Number : 4121350227
+VOID
+Amazon Web Services, Inc.
+zachrywood3@gmail.com
+410 Terry Avenue North EIN 91-1646860 Seattle Washington 98109-5210 (206) 266-1000 
+1234 
+pay to the
+Order of
+For
+121000248 4121350227 1234
+$
+This void check may be provided to whom you are authorizing for no other purpose except to set up electronic payment credit/ debit to your
+account.
+Authorization
+I certify that I am an authorized representative of the Company indicated above and that I have the authority to authorize these
+payments on the Company’s behalf, and I am responsible for providing accurate account information for the purpose of the
+credit/debit through OCW platform. The Company will hold OCW and ZACHRY T WOOD fully harmless and indemnified for
+any liability if this authorization is invalid or the account information provided is incorrect or the credit/debit is made to an incorrect
+account. The Company understands that this authorization will remain in effect until it is canceled in writing and agrees to notify
+OnlineCheckWriter in writing of any changes in its account information or termination of this authorization at least 15 days prior to
+the next draft/billing date. It will remain in force for a minimum of 1 year from the date of the last transaction originated unless
+OCW terminates it earlier. The Company acknowledges that any changes an authorized representative makes to account
+information via an online Customer Portal will be considered written notice of change and will constitute authorization to charge
+the new account in place of the account identified on this form. If the above noted payment dates fall on a weekend or holiday, the
+Company understands that the payments may be executed on the next business day. The Company understands that because
+these are electronic transactions, these funds may be withdrawn from its account as soon as the above noted transaction dates
+arrive, and that it will have limited time to report and dispute errors. Should a debit be returned for any reason after the initiation of
+the credit, OCW will immediately hold any credit pushes or Digital Tokens, will debit the account, and will no longer process
+credits until the transaction has been honored. In the case the transaction is returned for Non-Sufficient Funds (NSF) the
+Company understands that Online Check Writer may at its discretion attempt to process the transfer again within 30 days, and the
+Company agrees to an additional $30.00 charge for each attempted return for NSF, which will be treated as a separate
+transaction from the authorized payment. The Company has certified that the above business bank account is enabled for ACH
+transactions and agrees to reimburse OCW for all penalties and fees incurred as a result of the Company’s bank rejecting ACH
+debits or credits as a result of the account not being properly configured for ACH transactions. Both parties agree to be bound by
+NACHA Operating Rules as they pertain to these transactions. The Company acknowledges that the origination of ACH
+transactions to its account must comply with all relevant state and federal laws of the United States. The Company agrees not to
+dispute these scheduled transactions with its bank provided the transactions correspond to the terms indicated in this
+Authorization Form.
+Signature : ZACHRY T WOOD SRO
+electronically signed from ip address 
+172.58.107.109 at 03/11/2023- 02:11 am America/Chicago
+Date : 03/11/2023 
+Name : ZACHRY TYLER WOOD Title : Ci/CI
+Publish:
