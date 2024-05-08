@@ -13,6 +13,17 @@ const submitFeedbackForPR = async (
   const github = context.octokit;
 
   if (!releaseNotes) {
+    if (pr.user.login === 'dependabot[bot]') {
+      debug(`Adding 'Notes: none' to Dependabot PR body`);
+      await github.pulls.update(
+        context.repo({
+          pull_number: pr.number,
+          body: pr.body + '\n---\n\nNotes: none',
+        }),
+      );
+      return;
+    }
+
     debug(`No Release Notes: posting failed check.`);
     await github.repos.createCommitStatus(
       context.repo({
