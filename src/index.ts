@@ -18,7 +18,7 @@ const submitFeedbackForPR = async (
       await github.pulls.update(
         context.repo({
           pull_number: pr.number,
-          body: pr.body + '\n---\n\nNotes: none',
+          body: pr.body + '\n\n---\n\nNotes: none',
         }),
       );
       return;
