@@ -1,4 +1,4 @@
-import { Probot, Context } from 'probot';
+import { Probot } from 'probot';
 import { probotRunner } from '../src/index';
 import * as noteUtils from '../src/note-utils';
 import { SEMANTIC_BUILD_PREFIX } from '../src/constants';
