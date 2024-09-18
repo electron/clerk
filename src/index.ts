@@ -70,7 +70,7 @@ const submitFeedbackForPR = async (
   }
 };
 
-const probotRunner = (app: Probot) => {
+export const probotRunner = (app: Probot) => {
   app.on('pull_request', async (context) => {
     const pr = context.payload.pull_request;
 
@@ -84,5 +84,3 @@ const probotRunner = (app: Probot) => {
     }
   });
 };
-
-module.exports = probotRunner;
