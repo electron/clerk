@@ -84,3 +84,5 @@ export const probotRunner = (app: Probot) => {
     }
   });
 };
+
+export default probotRunner;
