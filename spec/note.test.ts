@@ -1,5 +1,5 @@
-import * as constants from '../constants';
-import * as noteUtils from '../note-utils';
+import * as constants from '../src/constants';
+import * as noteUtils from '../src/note-utils';
 
 describe('note detection', () => {
   it('can find a note', () => {
