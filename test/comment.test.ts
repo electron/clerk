@@ -1,10 +1,12 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import nock from 'nock';
 import { Probot } from 'probot';
+
 import { probotRunner } from '../src/index';
 import * as noteUtils from '../src/note-utils';
 import { SEMANTIC_BUILD_PREFIX } from '../src/constants';
 import { PullRequestOpenedEvent, PullRequestClosedEvent } from '@octokit/webhooks-types';
-
-const nock = require('nock');
 
 const GH_API = 'https://api.github.com';
 
@@ -24,13 +26,13 @@ describe('probotRunner', () => {
   });
 
   afterEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     nock.cleanAll();
     nock.enableNetConnect();
   });
 
   it('should post a failure status if release notes are missing', async () => {
-    jest.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
 
     const payload = {
       action: 'opened',
@@ -67,7 +69,7 @@ describe('probotRunner', () => {
   });
 
   it('should add "Notes: none" to Dependabot PR body', async () => {
-    jest.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
 
     const payload = {
       action: 'opened',
@@ -97,7 +99,7 @@ describe('probotRunner', () => {
   });
 
   it('should add "Notes: none" to build PR body', async () => {
-    jest.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue(null);
 
     const payload = {
       action: 'opened',
@@ -125,7 +127,7 @@ describe('probotRunner', () => {
   });
 
   it('should post a success status if release notes are found', async () => {
-    jest.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Notes: added a new feature');
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Notes: added a new feature');
 
     const payload = {
       action: 'opened',
@@ -163,8 +165,8 @@ describe('probotRunner', () => {
 
   it('should create a comment if release notes are found and shouldComment is true', async () => {
     const releaseNotesComment = 'Comment from release notes';
-    jest.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Added a new feature');
-    jest.spyOn(noteUtils, 'createPRCommentFromNotes').mockReturnValue(releaseNotesComment);
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Added a new feature');
+    vi.spyOn(noteUtils, 'createPRCommentFromNotes').mockReturnValue(releaseNotesComment);
 
     const payload = {
       action: 'closed',
