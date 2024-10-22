@@ -9,29 +9,24 @@ export const findNoteInPRBody = (body: string): string | null => {
   const multilineMatch = /(?:(?:\r?\n?)Notes:(?:\r?\n+)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
 
   let notes: string | null = null;
-  if (onelineMatch && onelineMatch[1]) {
+  if (onelineMatch?.[1]) {
     notes = onelineMatch[1];
-  } else if (multilineMatch && multilineMatch[1]) {
+  } else if (multilineMatch?.[1]) {
     notes = multilineMatch[1];
   }
+
+  // Remove the default PR template if it exists.
+  notes = notes ? notes.replace(/<!--.*?-->/g, '') : null;
 
   if (notes) {
     debug(`Found Notes: ${JSON.stringify(notes.trim())}`);
 
-    // Remove the default PR template.
-    notes = notes.replace(/<!--.*?-->/g, '');
-  }
-
-  if (notes) {
     const sanitizeMap = new Map([
       ['<', '&lt;'],
       ['>', '&gt;'],
     ]);
     for (const [oldVal, newVal] of sanitizeMap.entries()) {
-      // TODO: use replaceAll when @node/types catches up to 15
-      while (notes.includes(oldVal)) {
-        notes = notes.replace(oldVal, newVal);
-      }
+      notes = notes.replaceAll(oldVal, newVal);
     }
   }
 

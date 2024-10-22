@@ -709,10 +709,12 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-14.0.4.tgz#43a63fc5edce226bed106b31b875165256271107"
   integrity sha512-k3NqigXWRzQZVBDS5D1U70A5E8Qk4Kh+Ha/x4M8Bt9pF0X05eggfnC9+63Usc9Q928hRUIpIhTQaXsZwZBl4Ew==
 
-"@types/node@^16.11.7":
-  version "16.11.59"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-16.11.59.tgz#823f238b9063ccc3b3b7f13186f143a57926c4f6"
-  integrity sha512-6u+36Dj3aDzhfBVUf/mfmc92OEdzQ2kx2jcXGdigfl70E/neV21ZHE6UCz4MDzTRcVqGAM27fk+DLXvyDsn3Jw==
+"@types/node@^20.9.0":
+  version "20.16.13"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-20.16.13.tgz#148c152d757dc73f8d65f0f6f078f39050b85b0c"
+  integrity sha512-GjQ7im10B0labo8ZGXDGROUl9k0BNyDgzfGpb4g/cl+4yYDWVKcozANF4FGr4/p0O/rAkQClM6Wiwkije++1Tg==
+  dependencies:
+    undici-types "~6.19.2"
 
 "@types/pino-http@^5.0.6":
   version "5.8.1"
@@ -2867,6 +2869,11 @@ uglify-js@^3.1.4:
   integrity sha512-r5ImcL6QyzQGVimQoov3aL2ZScywrOgBXGndbWrdehKoSvGe/RmiE5Jpw/v+GvxODt6l2tpBXwA7n+qZVlHBMA==
   dependencies:
     commander "~2.20.3"
+
+undici-types@~6.19.2:
+  version "6.19.8"
+  resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-6.19.8.tgz#35111c9d1437ab83a7cdc0abae2f26d88eda0a02"
+  integrity sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==
 
 universal-github-app-jwt@^1.0.1:
   version "1.1.1"
