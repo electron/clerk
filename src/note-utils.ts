@@ -6,7 +6,7 @@ const debug = d('note-utils');
 
 export const findNoteInPRBody = (body: string): string | null => {
   const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
-  const multilineMatch = /(?:(?:\r?\n)Notes:(?:\r?\n+)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
+  const multilineMatch = /(?:(?:\r?\n?)Notes:(?:\r?\n+)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
 
   let notes: string | null = null;
   if (onelineMatch && onelineMatch[1]) {
