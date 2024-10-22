@@ -80,6 +80,21 @@ describe('comment generation', () => {
 
     expect(comment).toEqual(expect.stringContaining(expected));
   });
+
+  it('can handle a PR body only containing a note', () => {
+    const note = noteUtils.findNoteInPRBody(prBodyWithOnlyNotes);
+    const comment = noteUtils.createPRCommentFromNotes(note);
+    expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
+
+    const expected = `
+> * Security: backported fix for CVE-2024-7965.
+> * Security: backported fix for CVE-2024-7966.
+> * Security: backported fix for CVE-2024-7967.
+> * Security: backported fix for CVE-2024-8198.
+> * Security: backported fix for CVE-2024-8193.`;
+
+    expect(comment).toEqual(expect.stringContaining(expected));
+  });
 });
 
 /* Test PR Bodies */
@@ -199,3 +214,12 @@ See that PR for details.
 Notes: Fixed an issue where packages could not be selected with <input file="type"> on macOS.
 `;
 /* tslint:enable */
+
+const prBodyWithOnlyNotes = `
+Notes:
+* Security: backported fix for CVE-2024-7965.
+* Security: backported fix for CVE-2024-7966.
+* Security: backported fix for CVE-2024-7967.
+* Security: backported fix for CVE-2024-8198.
+* Security: backported fix for CVE-2024-8193.
+`;
