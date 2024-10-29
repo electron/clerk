@@ -12,7 +12,7 @@ const submitFeedbackForPR = async (
   pr: PullRequest,
   shouldComment = false,
 ) => {
-  const releaseNotes = pr.body && noteUtils.findNoteInPRBody(pr.body);
+  const releaseNotes = pr.body != null && noteUtils.findNoteInPRBody(pr.body);
   const github = context.octokit;
 
   if (!releaseNotes) {
