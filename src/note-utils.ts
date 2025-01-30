@@ -4,9 +4,26 @@ import * as constants from './constants';
 import d from 'debug';
 const debug = d('note-utils');
 
-export const findNoteInPRBody = (body: string): string | null => {
-  const onelineMatch = /(?:(?:\r?\n)|^)notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
-  const multilineMatch = /(?:(?:\r?\n?)Notes:(?:\r?\n+)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
+export const updatePRBodyForNoNotes = (body: string | null) => {
+  if (!body) return '';
+
+  let notesBody = body;
+  if (/(?:(?:\r?\n)|^)Notes: (.+?)(?:(?:\r?\n)|$)/gi.test(notesBody)) {
+    debug('Updating existing default notes template');
+    notesBody = notesBody.replace(/<!--.*?-->/g, 'none');
+  } else {
+    debug('Adding Notes: none to PR body');
+    notesBody += '\n\n---\n\nNotes: none';
+  }
+
+  return notesBody;
+};
+
+export const findNoteInPRBody = (body: string | null) => {
+  if (!body) return null;
+
+  const onelineMatch = /(?:(?:\r?\n)|^)Notes: (.+?)(?:(?:\r?\n)|$)/gi.exec(body);
+  const multilineMatch = /(?:(?:\r?\n)Notes:(?:\r?\n+)((?:\*.+(?:(?:\r?\n)|$))+))/gi.exec(body);
 
   let notes: string | null = null;
   if (onelineMatch?.[1]) {

@@ -1,7 +1,7 @@
 import { PullRequest } from '@octokit/webhooks-types/schema';
 import { Probot, Context } from 'probot';
 
-import * as noteUtils from './note-utils';
+import { createPRCommentFromNotes, findNoteInPRBody, updatePRBodyForNoNotes } from './note-utils';
 
 import d from 'debug';
 import { SEMANTIC_BUILD_PREFIX } from './constants';
@@ -12,7 +12,7 @@ const submitFeedbackForPR = async (
   pr: PullRequest,
   shouldComment = false,
 ) => {
-  const releaseNotes = pr.body != null && noteUtils.findNoteInPRBody(pr.body);
+  const releaseNotes = findNoteInPRBody(pr.body);
   const github = context.octokit;
 
   if (!releaseNotes) {
@@ -21,7 +21,7 @@ const submitFeedbackForPR = async (
       await github.pulls.update(
         context.repo({
           pull_number: pr.number,
-          body: pr.body + '\n\n---\n\nNotes: none',
+          body: updatePRBodyForNoNotes(pr.body),
         }),
       );
       return;
@@ -32,7 +32,7 @@ const submitFeedbackForPR = async (
       await github.pulls.update(
         context.repo({
           pull_number: pr.number,
-          body: pr.body + '\n\n---\n\nNotes: none',
+          body: updatePRBodyForNoNotes(pr.body),
         }),
       );
       return;
@@ -62,7 +62,7 @@ const submitFeedbackForPR = async (
       debug(`Creating comment from Release Notes.`);
       await github.issues.createComment(
         context.repo({
-          body: noteUtils.createPRCommentFromNotes(releaseNotes),
+          body: createPRCommentFromNotes(releaseNotes),
           issue_number: pr.number,
         }),
       );

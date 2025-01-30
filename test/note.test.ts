@@ -1,52 +1,69 @@
 import { describe, expect, it } from 'vitest';
 
 import * as constants from '../src/constants';
-import * as noteUtils from '../src/note-utils';
+import {
+  findNoteInPRBody,
+  updatePRBodyForNoNotes,
+  createPRCommentFromNotes,
+} from '../src/note-utils';
 
 describe('note detection', () => {
   it('can find a note', () => {
-    expect(noteUtils.findNoteInPRBody(prBodyWithNote)).toEqual('Added a memory leak.');
+    const note = findNoteInPRBody(prBodyWithNote);
+    expect(note).toEqual('Added a memory leak.');
   });
+
   it('strips comments out of PR bodies', () => {
-    expect(noteUtils.findNoteInPRBody(prBodyWithEmbeddedComment)).toEqual('no-notes');
+    const note = findNoteInPRBody(prBodyWithEmbeddedComment);
+    expect(note).toEqual('no-notes');
   });
+
   it('strips embedded html out of note bodies', () => {
-    const note = noteUtils.findNoteInPRBody(prBodyWithEmbeddedHtmlInNote);
+    const note = findNoteInPRBody(prBodyWithEmbeddedHtmlInNote);
     expect(note).toContain('&lt;input file="type"&gt;');
     expect(note).not.toContain('<input file="type">');
+  });
+
+  it('adds no-notes when necessary to build PRs', () => {
+    const note = findNoteInPRBody(prBodyWithDefaultNote);
+    expect(note).toEqual('');
+
+    const updatedBody = updatePRBodyForNoNotes(prBodyWithDefaultNote);
+    console.log(updatedBody);
+    expect(updatedBody).toEqual(expect.stringContaining('Notes: none'));
   });
 });
 
 describe('comment generation', () => {
   it('knows when to show notes', () => {
     const note = 'some note';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining(note));
   });
 
   it('knows when to show no-notes', () => {
-    const note = noteUtils.findNoteInPRBody(prBodyWithNoNote);
-    expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
+    const note = findNoteInPRBody(prBodyWithNoNote);
+    expect(createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
 
-    expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
+    expect(createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
   });
 
   it('shows no-notes when a HTML comment is left in the PR', () => {
-    const note = noteUtils.findNoteInPRBody(prBodyWithBadCase);
-    expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
+    const note = findNoteInPRBody(prBodyWithBadCase);
+    expect(createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
   });
 
   it('can handle missing notes', () => {
-    const note = noteUtils.findNoteInPRBody('oh no');
-    expect(noteUtils.createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
+    const note = findNoteInPRBody('oh no');
+    expect(createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
 
-    expect(noteUtils.createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
+    expect(createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
   });
 
   it('does not false positively match no-notes', () => {
-    const surpriseNote = noteUtils.findNoteInPRBody(prBodyWithSurpriseNote);
-    const comment = noteUtils.createPRCommentFromNotes(surpriseNote);
+    const surpriseNote = findNoteInPRBody(prBodyWithSurpriseNote);
+    const comment = createPRCommentFromNotes(surpriseNote);
 
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining('> no-notes but actually a note.'));
@@ -54,21 +71,21 @@ describe('comment generation', () => {
 
   it('quotes a single-line note', () => {
     const note = 'some note';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining(`> ${note}`));
   });
 
   it('quotes a multiline note', () => {
     const note = 'line one\nline two';
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const comment = createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
     expect(comment).toEqual(expect.stringContaining('> line one\n> line two'));
   });
 
   it('can handle different multiline note formatting', () => {
-    const note = noteUtils.findNoteInPRBody(prBodyWithMultilineNotes);
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const note = findNoteInPRBody(prBodyWithMultilineNotes);
+    const comment = createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
 
     const expected = `
@@ -82,8 +99,8 @@ describe('comment generation', () => {
   });
 
   it('can handle a PR body only containing a note', () => {
-    const note = noteUtils.findNoteInPRBody(prBodyWithOnlyNotes);
-    const comment = noteUtils.createPRCommentFromNotes(note);
+    const note = findNoteInPRBody(prBodyWithOnlyNotes);
+    const comment = createPRCommentFromNotes(note);
     expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
 
     const expected = `
@@ -98,6 +115,16 @@ describe('comment generation', () => {
 });
 
 /* Test PR Bodies */
+
+/* tslint:disable */
+const prBodyWithDefaultNote = `#### Description of Change
+
+Something
+
+#### Release Notes
+
+Notes: <!-- Please add a one-line description for app developers to read in the release notes, or 'none' if no notes relevant to app developers. Examples and help on special cases: https://github.com/electron/clerk/blob/master/README.md#examples -->
+`;
 
 /* tslint:disable */
 const prBodyWithNote = `#### Description of Change
