@@ -4,17 +4,20 @@
   "private": true,
   "main": "index.js",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@octokit/rest": "^19.0.4",
     "debug": "^4.3.4",
-    "probot": "^12.3.3"
+    "probot": "^13.4.3"
   },
   "devDependencies": {
     "@types/debug": "^4.1.12",
     "@types/node": "^22.8.0",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
-    "nock": "^13.5.5",
+    "nock": "^14.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.6.3",
     "vitest": "^2.1.3"
