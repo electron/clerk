@@ -73,13 +73,14 @@ const submitFeedbackForPR = async (
 export const probotRunner = (app: Probot) => {
   app.on('pull_request', async (context) => {
     const pr = context.payload.pull_request;
+    const repo = context.payload.repository.full_name;
 
     if (context.payload.action === 'closed' && pr.merged) {
-      debug(`Checking release notes comment on PR #${pr.number}`);
+      debug(`Checking release notes comment on PR ${repo}#${pr.number}`);
       await submitFeedbackForPR(context, pr, true);
     } else if (!pr.merged && pr.state === 'open') {
       // Only submit feedback for PRs that aren't merged and are open
-      debug(`Checking & posting release notes comment on PR #${pr.number}`);
+      debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
       await submitFeedbackForPR(context, pr);
     }
   });
