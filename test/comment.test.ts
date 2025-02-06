@@ -48,6 +48,7 @@ describe('probotRunner', () => {
       repository: {
         name: 'electron',
         owner: { login: 'electron' },
+        full_name: 'electron/electron',
       },
     } as PullRequestOpenedEvent;
 
@@ -81,6 +82,11 @@ describe('probotRunner', () => {
           login: 'dependabot[bot]',
         },
       },
+      repository: {
+        name: 'electron',
+        owner: { login: 'electron' },
+        full_name: 'electron/electron',
+      },
     } as PullRequestOpenedEvent;
 
     nock(GH_API)
@@ -108,6 +114,11 @@ describe('probotRunner', () => {
         title: `${SEMANTIC_BUILD_PREFIX} Build PR`,
         body: 'Fix something to do with GitHub Actions',
         user: { login: 'codebytere' },
+      },
+      repository: {
+        name: 'electron',
+        owner: { login: 'electron' },
+        full_name: 'electron/electron',
       },
     } as PullRequestOpenedEvent;
 
@@ -143,6 +154,7 @@ describe('probotRunner', () => {
       repository: {
         name: 'electron',
         owner: { login: 'electron' },
+        full_name: 'electron/electron',
       },
     } as PullRequestOpenedEvent;
 
@@ -182,6 +194,7 @@ describe('probotRunner', () => {
       repository: {
         name: 'electron',
         owner: { login: 'electron' },
+        full_name: 'electron/electron',
       },
     } as PullRequestClosedEvent;
 
