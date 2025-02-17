@@ -10,7 +10,7 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
   let notesBody = body;
   if (/(?:(?:\r?\n)|^)Notes: (.+?)(?:(?:\r?\n)|$)/gi.test(notesBody)) {
     debug('Updating existing default notes template');
-    notesBody = notesBody.replace(/<!--.*?-->/g, 'none');
+    notesBody = notesBody.replace(/<!-- Please add a one-line description[\s\S]*?-->/gi, 'none');
   } else {
     debug('Adding Notes: none to PR body');
     notesBody += '\n\n---\n\nNotes: none';
