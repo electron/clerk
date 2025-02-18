@@ -31,6 +31,9 @@ describe('note detection', () => {
     const updatedBody = updatePRBodyForNoNotes(prBodyWithDefaultNote);
     console.log(updatedBody);
     expect(updatedBody).toEqual(expect.stringContaining('Notes: none'));
+
+    // Ensure it didn't try to replace other comments
+    expect(updatedBody).toContain('Remove items that do not apply');
   });
 });
 
@@ -120,6 +123,11 @@ describe('comment generation', () => {
 const prBodyWithDefaultNote = `#### Description of Change
 
 Something
+
+#### Checklist
+<!-- Remove items that do not apply. For completed items, change [ ] to [x]. -->
+
+- [x] PR description included and stakeholders cc'd
 
 #### Release Notes
 
