@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import nock from 'nock';
-import { Probot } from 'probot';
+import { type Context, Probot } from 'probot';
 
 import { probotRunner } from '../src/index';
 import * as noteUtils from '../src/note-utils';
 import { SEMANTIC_BUILD_PREFIX } from '../src/constants';
-import { PullRequestOpenedEvent, PullRequestClosedEvent } from '@octokit/webhooks-types';
+
+type PullRequestOpenedEvent = Context<'pull_request.opened'>['payload'];
+type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
 
 const GH_API = 'https://api.github.com';
 
