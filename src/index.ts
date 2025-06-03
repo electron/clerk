@@ -1,5 +1,4 @@
-import { PullRequest } from '@octokit/webhooks-types/schema';
-import { Probot, Context } from 'probot';
+import type { Probot, Context } from 'probot';
 
 import { createPRCommentFromNotes, findNoteInPRBody, updatePRBodyForNoNotes } from './note-utils';
 
@@ -9,7 +8,7 @@ const debug = d('note-utils');
 
 const submitFeedbackForPR = async (
   context: Context<'pull_request'>,
-  pr: PullRequest,
+  pr: Context<'pull_request'>['payload']['pull_request'],
   shouldComment = false,
 ) => {
   const releaseNotes = findNoteInPRBody(pr.body);
