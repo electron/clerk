@@ -22,5 +22,5 @@ jobs:
         node-version: lts/*
     - name: yarn install, build, and test
       run: |
-        yarn install
+        yarn --immutable
         yarn test

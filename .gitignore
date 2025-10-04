@@ -3,3 +3,4 @@ private.key
 node_modules
 lib
 .envrc
+.yarn/install-state.gz
