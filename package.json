@@ -25,7 +25,6 @@
     "build": "tsc",
     "lint": "prettier --list-different \"{src,test}/**/*.{ts,tsx}\"",
     "prettier:write": "prettier --write \"{src,test}/**/*.{ts,tsx}\"",
-    "postinstall": "tsc",
     "start": "DEBUG=* probot run ./lib/index.js",
     "test": "vitest run",
     "test:watch": "vitest watch",
