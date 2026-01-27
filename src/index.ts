@@ -17,7 +17,7 @@ const submitFeedbackForPR = async (
   if (!releaseNotes) {
     if (pr.user.login === 'dependabot[bot]') {
       debug(`Adding 'Notes: none' to Dependabot PR body`);
-      await github.pulls.update(
+      await github.rest.pulls.update(
         context.repo({
           pull_number: pr.number,
           body: updatePRBodyForNoNotes(pr.body),
@@ -28,7 +28,7 @@ const submitFeedbackForPR = async (
 
     if (pr.title.startsWith(SEMANTIC_BUILD_PREFIX)) {
       debug("Adding 'Notes: none' to build: PR body");
-      await github.pulls.update(
+      await github.rest.pulls.update(
         context.repo({
           pull_number: pr.number,
           body: updatePRBodyForNoNotes(pr.body),
@@ -38,7 +38,7 @@ const submitFeedbackForPR = async (
     }
 
     debug(`No Release Notes: posting failed check.`);
-    await github.repos.createCommitStatus(
+    await github.rest.repos.createCommitStatus(
       context.repo({
         state: 'failure' as 'failure',
         sha: pr.head.sha,
@@ -48,7 +48,7 @@ const submitFeedbackForPR = async (
     );
   } else {
     debug(`Release Notes found: posting successful check.`);
-    await github.repos.createCommitStatus(
+    await github.rest.repos.createCommitStatus(
       context.repo({
         state: 'success' as 'success',
         sha: pr.head.sha,
@@ -59,7 +59,7 @@ const submitFeedbackForPR = async (
 
     if (shouldComment) {
       debug(`Creating comment from Release Notes.`);
-      await github.issues.createComment(
+      await github.rest.issues.createComment(
         context.repo({
           body: createPRCommentFromNotes(releaseNotes),
           issue_number: pr.number,
