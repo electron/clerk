@@ -1,13 +1,13 @@
 {
+  "extends": "@tsconfig/node24/tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2021",
-    "outDir": "lib",
     "sourceMap": true,
-    "rootDir": "src",
-    "experimentalDecorators": true,
-    "strict": true,
-    "allowSyntheticDefaultImports": true
+    "strict": false,
+    "outDir": "lib",
+    "types": [
+      "node"
+    ],
+    "declaration": true
   },
   "include": [
     "src"
