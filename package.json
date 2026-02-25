@@ -16,7 +16,7 @@
     "@types/debug": "^4.1.12",
     "@types/node": "^22.8.0",
     "husky": "^9.1.6",
-    "lint-staged": "^15.2.10",
+    "lint-staged": "^16.2.7",
     "nock": "^14.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.9.3",
