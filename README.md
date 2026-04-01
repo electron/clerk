@@ -19,7 +19,7 @@ adding a single line to its description beginning with `Notes: `.
 * Omit notes for changes that users won't care about.
   ```diff
   - Notes: only define WIN32_LEAN_AND_MEAN if not already defined
-  + Notes: notes
+  + Notes: none
   ```
 
 * For consistency in notes, use the past tense and capitalize and punctuate your notes.
