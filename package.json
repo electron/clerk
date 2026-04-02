@@ -20,7 +20,7 @@
     "nock": "^14.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.9.3",
-    "vitest": "^3.0.6"
+    "vitest": "^4.1.1"
   },
   "scripts": {
     "build": "tsc",
