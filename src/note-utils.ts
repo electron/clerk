@@ -10,7 +10,13 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
   let notesBody = body;
   if (/(?:(?:\r?\n)|^)Notes: (.+?)(?:(?:\r?\n)|$)/gi.test(notesBody)) {
     debug('Updating existing default notes template');
-    notesBody = notesBody.replace(/<!-- Please add a one-line description[\s\S]*?-->/gi, 'none');
+    // Bound the lazy scan to a constant number of characters. The real GitHub
+    // template comment is well under this length, but an unbounded `[\s\S]*?`
+    // under the global flag lets an attacker-controlled body (many copies of
+    // the literal prefix with no closing `-->`) force a re-scan to end-of-string
+    // per occurrence, which is O(n^2) in the body length. Capping the span keeps
+    // each match attempt O(1) so the overall replace stays linear.
+    notesBody = notesBody.replace(/<!-- Please add a one-line description[\s\S]{0,1000}?-->/gi, 'none');
   } else {
     debug('Adding Notes: none to PR body');
     notesBody += '\n\n---\n\nNotes: none';
