@@ -10,7 +10,16 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
   let notesBody = body;
   if (/(?:(?:\r?\n)|^)Notes: (.+?)(?:(?:\r?\n)|$)/gi.test(notesBody)) {
     debug('Updating existing default notes template');
-    notesBody = notesBody.replace(/<!-- Please add a one-line description[\s\S]*?-->/gi, 'none');
+    // Bound the lazy scan to a constant number of characters. The real GitHub
+    // template comment is well under this length, but an unbounded `[\s\S]*?`
+    // under the global flag lets an attacker-controlled body (many copies of
+    // the literal prefix with no closing `-->`) force a re-scan to end-of-string
+    // per occurrence, which is O(n^2) in the body length. Capping the span keeps
+    // each match attempt O(1) so the overall replace stays linear.
+    notesBody = notesBody.replace(
+      /<!-- Please add a one-line description[\s\S]{0,1000}?-->/gi,
+      'none',
+    );
   } else {
     debug('Adding Notes: none to PR body');
     notesBody += '\n\n---\n\nNotes: none';
@@ -32,8 +41,12 @@ export const findNoteInPRBody = (body: string | null) => {
     notes = multilineMatch[1];
   }
 
-  // Remove the default PR template if it exists.
-  notes = notes ? notes.replace(/<!--.*?-->/g, '') : null;
+  // Remove the default PR template if it exists. Bound the lazy scan for the
+  // same reason as in updatePRBodyForNoNotes: `notes` is derived from the
+  // attacker-controlled PR body, and an unbounded `.*?` under the global flag
+  // is O(n^2) when the input contains many `<!--` prefixes with no closing
+  // `-->`. Capping the span keeps this linear in the input length.
+  notes = notes ? notes.replace(/<!--.{0,1000}?-->/g, '') : null;
 
   if (notes) {
     debug(`Found Notes: ${JSON.stringify(notes.trim())}`);
