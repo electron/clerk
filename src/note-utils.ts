@@ -38,8 +38,12 @@ export const findNoteInPRBody = (body: string | null) => {
     notes = multilineMatch[1];
   }
 
-  // Remove the default PR template if it exists.
-  notes = notes ? notes.replace(/<!--.*?-->/g, '') : null;
+  // Remove the default PR template if it exists. Bound the lazy scan for the
+  // same reason as in updatePRBodyForNoNotes: `notes` is derived from the
+  // attacker-controlled PR body, and an unbounded `.*?` under the global flag
+  // is O(n^2) when the input contains many `<!--` prefixes with no closing
+  // `-->`. Capping the span keeps this linear in the input length.
+  notes = notes ? notes.replace(/<!--.{0,1000}?-->/g, '') : null;
 
   if (notes) {
     debug(`Found Notes: ${JSON.stringify(notes.trim())}`);
