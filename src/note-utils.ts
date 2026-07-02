@@ -16,7 +16,10 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
     // the literal prefix with no closing `-->`) force a re-scan to end-of-string
     // per occurrence, which is O(n^2) in the body length. Capping the span keeps
     // each match attempt O(1) so the overall replace stays linear.
-    notesBody = notesBody.replace(/<!-- Please add a one-line description[\s\S]{0,1000}?-->/gi, 'none');
+    notesBody = notesBody.replace(
+      /<!-- Please add a one-line description[\s\S]{0,1000}?-->/gi,
+      'none',
+    );
   } else {
     debug('Adding Notes: none to PR body');
     notesBody += '\n\n---\n\nNotes: none';
