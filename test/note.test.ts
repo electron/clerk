@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as constants from '../src/constants';
 import {
+  countNotesInPRBody,
   findNoteInPRBody,
   updatePRBodyForNoNotes,
   createPRCommentFromNotes,
@@ -34,6 +35,33 @@ describe('note detection', () => {
 
     // Ensure it didn't try to replace other comments
     expect(updatedBody).toContain('Remove items that do not apply');
+  });
+});
+
+describe('note counting', () => {
+  it('returns 0 for a missing body or a body without notes', () => {
+    expect(countNotesInPRBody(null)).toEqual(0);
+    expect(countNotesInPRBody('')).toEqual(0);
+    expect(countNotesInPRBody('oh no')).toEqual(0);
+    expect(countNotesInPRBody('See the release notes: none needed')).toEqual(0);
+  });
+
+  it('returns 1 for a single one-line note', () => {
+    expect(countNotesInPRBody(prBodyWithNote)).toEqual(1);
+    expect(countNotesInPRBody(prBodyWithDefaultNote)).toEqual(1);
+    expect(countNotesInPRBody('Notes: Fixed a thing.')).toEqual(1);
+  });
+
+  it('returns 1 for the bulleted multi-line form', () => {
+    expect(countNotesInPRBody(prBodyWithMultilineNotes)).toEqual(1);
+    expect(countNotesInPRBody(prBodyWithOnlyNotes)).toEqual(1);
+  });
+
+  it('counts repeated Notes: lines', () => {
+    expect(countNotesInPRBody(prBodyWithMultipleNotesLines)).toEqual(2);
+    expect(countNotesInPRBody('Notes: One.\r\nNotes: Two.\r\nNotes: Three.\r\n')).toEqual(3);
+    expect(countNotesInPRBody('Notes: One.\nnotes: Two.\n')).toEqual(2);
+    expect(countNotesInPRBody('Notes:\n* One.\n\nNotes: Two.\n')).toEqual(2);
   });
 });
 
@@ -257,4 +285,15 @@ Notes:
 * Security: backported fix for CVE-2024-7967.
 * Security: backported fix for CVE-2024-8198.
 * Security: backported fix for CVE-2024-8193.
+`;
+
+// A body with the repeated one-line form, which is not supported.
+const prBodyWithMultipleNotesLines = `#### Description of Change
+
+Does two things.
+
+#### Release Notes
+
+Notes: Fixed a crash when closing a window.
+Notes: Added a new \`foo\` option to \`BrowserWindow\`.
 `;
