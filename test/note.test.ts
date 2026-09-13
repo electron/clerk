@@ -62,6 +62,26 @@ describe('note counting', () => {
     expect(countNotesInPRBody('Notes: One.\r\nNotes: Two.\r\nNotes: Three.\r\n')).toEqual(3);
     expect(countNotesInPRBody('Notes: One.\nnotes: Two.\n')).toEqual(2);
     expect(countNotesInPRBody('Notes:\n* One.\n\nNotes: Two.\n')).toEqual(2);
+    expect(countNotesInPRBody('Notes:\r\n\r\n* One.\r\n* Two.\r\n\r\nNotes: Three.\r\n')).toEqual(
+      2,
+    );
+  });
+
+  it('does not count a bare Notes: line that is not followed by bullets', () => {
+    // Not a note to findNoteInPRBody either, so it must not be counted.
+    expect(countNotesInPRBody('Notes:\nSee the original PR discussion.\n')).toEqual(0);
+    expect(countNotesInPRBody('Notes:\n\nsome text\n')).toEqual(0);
+
+    // A real one-liner alongside a bare heading over free text is one note.
+    expect(
+      countNotesInPRBody(
+        'Notes: Backported fix for CVE-X.\n\nNotes:\nSee the original PR discussion.\n',
+      ),
+    ).toEqual(1);
+
+    // The body updatePRBodyForNoNotes produces for a build: PR with a bare
+    // Notes: heading must not trip the multiple-notes guard.
+    expect(countNotesInPRBody('Notes:\n\nsome text\n\n---\n\nNotes: none')).toEqual(1);
   });
 });
 

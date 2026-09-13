@@ -28,14 +28,16 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
   return notesBody;
 };
 
-// Counts the lines that begin a `Notes:` block, in either the one-line form
-// (`Notes: text`) or the bulleted multi-line form (a bare `Notes:` followed by
-// `* item` lines). Only the first one is ever persisted, so more than one is
-// almost certainly a mistake.
+// Counts the well-formed `Notes:` blocks in a body, mirroring what
+// findNoteInPRBody recognises: the one-line form (`Notes: text`) and the
+// bulleted multi-line form (a bare `Notes:` followed by one or more `* item`
+// lines). A bare `Notes:` with no bullets is not a note to findNoteInPRBody,
+// so it is not counted here either. Only the first note is ever persisted, so
+// more than one is almost certainly a mistake.
 export const countNotesInPRBody = (body: string | null) => {
   if (!body) return 0;
 
-  return body.match(/^Notes:(?: |\r?\n)/gim)?.length ?? 0;
+  return body.match(/^Notes: .+|^Notes:(?:\r?\n)+(?:\*.+(?:\r?\n|$))+/gim)?.length ?? 0;
 };
 
 export const findNoteInPRBody = (body: string | null) => {
