@@ -37,7 +37,15 @@ export const updatePRBodyForNoNotes = (body: string | null) => {
 export const countNotesInPRBody = (body: string | null) => {
   if (!body) return 0;
 
-  return body.match(/^Notes: .+|^Notes:(?:\r?\n)+(?:\*.+(?:\r?\n|$))+/gim)?.length ?? 0;
+  // Strip HTML comments first so an unfilled template placeholder
+  // (`Notes: <!-- Please add a one-line description ... -->`) is not counted:
+  // findNoteInPRBody strips the comment and treats that line as an empty note,
+  // so it must not be counted here either. Same bounded scan as there.
+  const stripped = body.replace(/<!--.{0,1000}?-->/g, '');
+
+  // The one-line form needs non-whitespace content after `Notes: ` so that a
+  // placeholder line that stripped down to `Notes: ` does not count.
+  return stripped.match(/^Notes: .*\S|^Notes:(?:\r?\n)+(?:\*.+(?:\r?\n|$))+/gim)?.length ?? 0;
 };
 
 export const findNoteInPRBody = (body: string | null) => {

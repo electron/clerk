@@ -53,8 +53,27 @@ describe('note counting', () => {
 
   it('returns 1 for a single one-line note', () => {
     expect(countNotesInPRBody(prBodyWithNote)).toEqual(1);
-    expect(countNotesInPRBody(prBodyWithDefaultNote)).toEqual(1);
     expect(countNotesInPRBody('Notes: Fixed a thing.')).toEqual(1);
+    expect(countNotesInPRBody('Notes: none')).toEqual(1);
+  });
+
+  it('does not count an unfilled template placeholder', () => {
+    // findNoteInPRBody strips the HTML comment and yields an empty note for
+    // the bare template placeholder, so it is not a note here either.
+    expect(countNotesInPRBody(prBodyWithDefaultNote)).toEqual(0);
+    expect(countNotesInPRBody('Notes: <!-- Please add a one-line description -->\n')).toEqual(0);
+
+    // A real note above the template plus the leftover placeholder below it
+    // is one note, not a "multiple Notes: lines" mistake.
+    expect(
+      countNotesInPRBody(
+        'Notes: Fixed a crash.\n\n#### Release Notes\n\nNotes: <!-- Please add a one-line description -->\n',
+      ),
+    ).toEqual(1);
+    expect(countNotesInPRBody(`Notes: Fixed a crash.\n\n${prBodyWithDefaultNote}`)).toEqual(1);
+
+    // A comment does not hide a real note written next to it.
+    expect(countNotesInPRBody('Notes: Fixed a crash. <!-- keep this short -->\n')).toEqual(1);
   });
 
   it('returns 1 for the bulleted multi-line form', () => {
