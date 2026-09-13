@@ -5,6 +5,8 @@
 Clerk ensures that release notes can be generated from PRs by looking for
 a release note in the PR description. You can add a note to your PR by
 adding a single line to its description beginning with `Notes: `.
+A PR body with more than one `Notes:` line fails the check; to write
+multiple notes, use a single `Notes:` followed by a bulleted list (see below).
 
 # Examples
   

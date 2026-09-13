@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as constants from '../src/constants';
 import {
+  countNotesInPRBody,
   findNoteInPRBody,
   updatePRBodyForNoNotes,
   createPRCommentFromNotes,
@@ -24,6 +25,11 @@ describe('note detection', () => {
     expect(note).not.toContain('<input file="type">');
   });
 
+  it('finds a bulleted note block at the very start of the body', () => {
+    const note = findNoteInPRBody('Notes:\n* One.\n* Two.\n');
+    expect(note).toEqual('* One.\n* Two.');
+  });
+
   it('adds no-notes when necessary to build PRs', () => {
     const note = findNoteInPRBody(prBodyWithDefaultNote);
     expect(note).toEqual('');
@@ -34,6 +40,73 @@ describe('note detection', () => {
 
     // Ensure it didn't try to replace other comments
     expect(updatedBody).toContain('Remove items that do not apply');
+  });
+});
+
+describe('note counting', () => {
+  it('returns 0 for a missing body or a body without notes', () => {
+    expect(countNotesInPRBody(null)).toEqual(0);
+    expect(countNotesInPRBody('')).toEqual(0);
+    expect(countNotesInPRBody('oh no')).toEqual(0);
+    expect(countNotesInPRBody('See the release notes: none needed')).toEqual(0);
+  });
+
+  it('returns 1 for a single one-line note', () => {
+    expect(countNotesInPRBody(prBodyWithNote)).toEqual(1);
+    expect(countNotesInPRBody('Notes: Fixed a thing.')).toEqual(1);
+    expect(countNotesInPRBody('Notes: none')).toEqual(1);
+  });
+
+  it('does not count an unfilled template placeholder', () => {
+    // findNoteInPRBody strips the HTML comment and yields an empty note for
+    // the bare template placeholder, so it is not a note here either.
+    expect(countNotesInPRBody(prBodyWithDefaultNote)).toEqual(0);
+    expect(countNotesInPRBody('Notes: <!-- Please add a one-line description -->\n')).toEqual(0);
+
+    // A real note above the template plus the leftover placeholder below it
+    // is one note, not a "multiple Notes: lines" mistake.
+    expect(
+      countNotesInPRBody(
+        'Notes: Fixed a crash.\n\n#### Release Notes\n\nNotes: <!-- Please add a one-line description -->\n',
+      ),
+    ).toEqual(1);
+    expect(countNotesInPRBody(`Notes: Fixed a crash.\n\n${prBodyWithDefaultNote}`)).toEqual(1);
+
+    // A comment does not hide a real note written next to it.
+    expect(countNotesInPRBody('Notes: Fixed a crash. <!-- keep this short -->\n')).toEqual(1);
+  });
+
+  it('returns 1 for the bulleted multi-line form', () => {
+    expect(countNotesInPRBody(prBodyWithMultilineNotes)).toEqual(1);
+    expect(countNotesInPRBody(prBodyWithOnlyNotes)).toEqual(1);
+    expect(countNotesInPRBody('Notes:\n* One.\n* Two.\n')).toEqual(1);
+  });
+
+  it('counts repeated Notes: lines', () => {
+    expect(countNotesInPRBody(prBodyWithMultipleNotesLines)).toEqual(2);
+    expect(countNotesInPRBody('Notes: One.\r\nNotes: Two.\r\nNotes: Three.\r\n')).toEqual(3);
+    expect(countNotesInPRBody('Notes: One.\nnotes: Two.\n')).toEqual(2);
+    expect(countNotesInPRBody('Notes:\n* One.\n\nNotes: Two.\n')).toEqual(2);
+    expect(countNotesInPRBody('Notes:\r\n\r\n* One.\r\n* Two.\r\n\r\nNotes: Three.\r\n')).toEqual(
+      2,
+    );
+  });
+
+  it('does not count a bare Notes: line that is not followed by bullets', () => {
+    // Not a note to findNoteInPRBody either, so it must not be counted.
+    expect(countNotesInPRBody('Notes:\nSee the original PR discussion.\n')).toEqual(0);
+    expect(countNotesInPRBody('Notes:\n\nsome text\n')).toEqual(0);
+
+    // A real one-liner alongside a bare heading over free text is one note.
+    expect(
+      countNotesInPRBody(
+        'Notes: Backported fix for CVE-X.\n\nNotes:\nSee the original PR discussion.\n',
+      ),
+    ).toEqual(1);
+
+    // The body updatePRBodyForNoNotes produces for a build: PR with a bare
+    // Notes: heading must not trip the multiple-notes guard.
+    expect(countNotesInPRBody('Notes:\n\nsome text\n\n---\n\nNotes: none')).toEqual(1);
   });
 });
 
@@ -257,4 +330,15 @@ Notes:
 * Security: backported fix for CVE-2024-7967.
 * Security: backported fix for CVE-2024-8198.
 * Security: backported fix for CVE-2024-8193.
+`;
+
+// A body with the repeated one-line form, which is not supported.
+const prBodyWithMultipleNotesLines = `#### Description of Change
+
+Does two things.
+
+#### Release Notes
+
+Notes: Fixed a crash when closing a window.
+Notes: Added a new \`foo\` option to \`BrowserWindow\`.
 `;

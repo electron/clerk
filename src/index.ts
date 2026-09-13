@@ -1,6 +1,11 @@
 import type { Probot, Context } from 'probot';
 
-import { createPRCommentFromNotes, findNoteInPRBody, updatePRBodyForNoNotes } from './note-utils';
+import {
+  countNotesInPRBody,
+  createPRCommentFromNotes,
+  findNoteInPRBody,
+  updatePRBodyForNoNotes,
+} from './note-utils';
 
 import d from 'debug';
 import { SEMANTIC_BUILD_PREFIX } from './constants';
@@ -13,6 +18,22 @@ const submitFeedbackForPR = async (
 ) => {
   const releaseNotes = findNoteInPRBody(pr.body);
   const github = context.octokit;
+
+  // Only guard against repeated Notes: blocks while the PR is still open. At
+  // merge time (shouldComment) the author can no longer fix the body, so keep
+  // persisting the first note rather than leaving no comment at all.
+  if (!shouldComment && countNotesInPRBody(pr.body) > 1) {
+    debug(`Multiple Notes: lines found: posting failed check.`);
+    await github.rest.repos.createCommitStatus(
+      context.repo({
+        state: 'failure' as 'failure',
+        sha: pr.head.sha,
+        description: 'Multiple Notes: lines; use one Notes: with a bulleted list',
+        context: 'release-notes',
+      }),
+    );
+    return;
+  }
 
   if (!releaseNotes) {
     if (pr.user.login === 'dependabot[bot]') {

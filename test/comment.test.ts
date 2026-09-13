@@ -28,7 +28,7 @@ describe('probotRunner', () => {
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
     nock.cleanAll();
     nock.enableNetConnect();
   });
@@ -69,6 +69,91 @@ describe('probotRunner', () => {
       .reply(200);
 
     await probot.receive({ id: '123', name: 'pull_request', payload });
+  });
+
+  it('should post a failure status if there are multiple Notes: lines', async () => {
+    const payload = {
+      action: 'opened',
+      pull_request: {
+        number: 1,
+        body: 'Fixes something broken\n\nNotes: Fixed one thing.\nNotes: Fixed another thing.\n',
+        title: 'fix: something broken',
+        user: { login: 'codebytere' },
+        head: { sha: 'abc123' },
+        state: 'open',
+        merged: false,
+      },
+      repository: {
+        name: 'electron',
+        owner: { login: 'electron' },
+        full_name: 'electron/electron',
+      },
+    } as PullRequestOpenedEvent;
+
+    nock(GH_API)
+      .post(
+        `/repos/electron/electron/statuses/${payload.pull_request.head.sha}`,
+        (body: Record<string, string>) => {
+          expect(body).toMatchObject({
+            context: 'release-notes',
+            description: 'Multiple Notes: lines; use one Notes: with a bulleted list',
+            state: 'failure',
+          });
+          return true;
+        },
+      )
+      .reply(200);
+
+    await probot.receive({ id: '123', name: 'pull_request', payload });
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it('should still comment with the first note at merge time if there are multiple Notes: lines', async () => {
+    const payload = {
+      action: 'closed',
+      pull_request: {
+        number: 1,
+        body: 'Fixes something broken\n\nNotes: Fixed one thing.\nNotes: Fixed another thing.\n',
+        title: 'fix: something broken',
+        user: { login: 'codebytere' },
+        head: { sha: 'abc123' },
+        state: 'closed',
+        merged: true,
+      },
+      repository: {
+        name: 'electron',
+        owner: { login: 'electron' },
+        full_name: 'electron/electron',
+      },
+    } as PullRequestClosedEvent;
+
+    nock(GH_API)
+      .post(
+        `/repos/electron/electron/statuses/${payload.pull_request.head.sha}`,
+        (body: Record<string, string>) => {
+          expect(body).toMatchObject({
+            context: 'release-notes',
+            description: 'Release notes found',
+            state: 'success',
+          });
+          return true;
+        },
+      )
+      .reply(200);
+
+    nock(GH_API)
+      .post(
+        `/repos/electron/electron/issues/${payload.pull_request.number}/comments`,
+        (body: Record<string, string>) => {
+          expect(body.body).toContain('Fixed one thing.');
+          expect(body.body).not.toContain('Fixed another thing.');
+          return true;
+        },
+      )
+      .reply(200);
+
+    await probot.receive({ id: '123', name: 'pull_request', payload });
+    expect(nock.isDone()).toBe(true);
   });
 
   it('should add "Notes: none" to Dependabot PR body', async () => {
