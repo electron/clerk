@@ -25,6 +25,11 @@ describe('note detection', () => {
     expect(note).not.toContain('<input file="type">');
   });
 
+  it('finds a bulleted note block at the very start of the body', () => {
+    const note = findNoteInPRBody('Notes:\n* One.\n* Two.\n');
+    expect(note).toEqual('* One.\n* Two.');
+  });
+
   it('adds no-notes when necessary to build PRs', () => {
     const note = findNoteInPRBody(prBodyWithDefaultNote);
     expect(note).toEqual('');
@@ -55,6 +60,7 @@ describe('note counting', () => {
   it('returns 1 for the bulleted multi-line form', () => {
     expect(countNotesInPRBody(prBodyWithMultilineNotes)).toEqual(1);
     expect(countNotesInPRBody(prBodyWithOnlyNotes)).toEqual(1);
+    expect(countNotesInPRBody('Notes:\n* One.\n* Two.\n')).toEqual(1);
   });
 
   it('counts repeated Notes: lines', () => {
