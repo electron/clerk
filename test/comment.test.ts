@@ -18,6 +18,8 @@ type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
 const GH_API = 'https://api.github.com';
 const COMMENTS_PATH = '/repos/electron/electron/issues/1/comments';
 
+const noExistingComments = () => nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+
 const expectStatus = (
   payload: { pull_request: { head: { sha: string } } },
   state: 'success' | 'failure',
@@ -409,6 +411,7 @@ describe('probotRunner', () => {
 
     it('does not lint Notes: none', async () => {
       const payload = openPR({ body: 'Notes: none\n' });
+      noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
@@ -417,6 +420,7 @@ describe('probotRunner', () => {
 
     it('skips lint for bot authors', async () => {
       const payload = openPR({ user: { login: 'trop[bot]', type: 'Bot' } });
+      noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
@@ -427,6 +431,7 @@ describe('probotRunner', () => {
       const payload = openPR({
         body: 'Backport of #12345\n\nNotes: fix crash for Notification close\n',
       });
+      noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
@@ -435,6 +440,7 @@ describe('probotRunner', () => {
 
     it('forces success with the override label despite findings, without commenting', async () => {
       const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+      noExistingComments();
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
@@ -446,6 +452,45 @@ describe('probotRunner', () => {
         body: 'Fixes something broken',
         labels: [{ name: OVERRIDE_LABEL }],
       });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes check overridden by label');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('resolves a stale lint comment when the note becomes Notes: none', async () => {
+      const payload = openPR({ body: 'Notes: none\n' });
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` }]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('resolves a stale lint comment when the override label is added', async () => {
+      const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` }]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
+          return true;
+        })
+        .reply(200);
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });

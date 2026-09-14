@@ -76,6 +76,9 @@ const submitFeedbackForPR = async (
 
   if (!shouldComment && labels.includes(OVERRIDE_LABEL)) {
     debug(`${OVERRIDE_LABEL} label present: posting successful check.`);
+    // A failing lint comment from before the label was added would contradict
+    // the green check, so mark it resolved.
+    await upsertLintComment(context, pr, null);
     await setStatus(context, pr, 'success', 'Release notes check overridden by label');
     return;
   }
@@ -137,6 +140,10 @@ const submitFeedbackForPR = async (
         await setStatus(context, pr, 'failure', 'Release notes need style fixes (see comment)');
         return;
       }
+      await upsertLintComment(context, pr, null);
+    } else if (!shouldComment) {
+      // The note is no longer linted (`Notes: none`, bot author or backport);
+      // resolve any comment left behind by an earlier failing run.
       await upsertLintComment(context, pr, null);
     }
 

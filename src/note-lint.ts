@@ -204,14 +204,12 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
     if (line === 'none') return { findings, fixed: line };
   }
 
-  const needsCapital = /^[a-z]/.test(line);
-  if (needsCapital) {
-    findings.push({
-      rule: 'capitalized',
-      message: 'Start the note with a capital letter.',
-      suggestion: line[0].toUpperCase() + line.slice(1),
-    });
-  }
+  // Decided after backtick wrapping below: a line that ends up starting with a
+  // code span (e.g. `webContents.print()`) needs no capital, and capitalizing
+  // it here would corrupt the API's casing in the suggestion.
+  const lowercaseStart = /^[a-z]/.test(line);
+  const capitalizedIndex = findings.length;
+  const capitalized = lowercaseStart ? line[0].toUpperCase() + line.slice(1) : null;
 
   const needsPeriod = !/[.!?][`)]*$/.test(line);
   if (needsPeriod) {
@@ -253,7 +251,15 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
     });
   }
 
-  if (needsCapital) line = line[0].toUpperCase() + line.slice(1);
+  const needsCapital = lowercaseStart && !line.startsWith('`');
+  if (needsCapital && capitalized) {
+    findings.splice(capitalizedIndex, 0, {
+      rule: 'capitalized',
+      message: 'Start the note with a capital letter.',
+      suggestion: capitalized,
+    });
+    line = line[0].toUpperCase() + line.slice(1);
+  }
   if (needsPeriod) line += '.';
 
   return { findings, fixed: line };

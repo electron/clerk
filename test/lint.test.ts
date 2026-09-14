@@ -108,6 +108,17 @@ describe('lintNote', () => {
     }
   });
 
+  it('does not ask for a capital when the note will start with a code span', () => {
+    const result = analyzeNote('webContents.print() failed unexpectedly.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['backticks']);
+    expect(result.fixed).toEqual('`webContents.print()` failed unexpectedly.');
+    expect(result.fixed?.startsWith('`')).toBe(true);
+    expect(rules('* webContents.print() failed.\n* app.quit() now works.')).toEqual([
+      'backticks',
+      'backticks',
+    ]);
+  });
+
   it('leaves prose, versions, URLs and domains alone', () => {
     expect(rules('Updated Node.js and Squirrel.Mac, i.e. the macOS updater, to v2.0.1.')).toEqual(
       [],
