@@ -96,9 +96,13 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   /^nothing.?$/i,
 ];
 
+// True for the `none` synonyms that mean "this change has no release note".
+export const isNoNotesNote = (note: string) =>
+  OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(note));
+
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
   let body = constants.NO_NOTES_BODY;
-  if (releaseNotes && !OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(releaseNotes))) {
+  if (releaseNotes && !isNoNotesNote(releaseNotes)) {
     const splitNotes = releaseNotes.split('\n').filter((line) => line !== '');
     if (splitNotes.length > 0) {
       const quoted = splitNotes.map((line) => `> ${line}`).join('\n');
