@@ -300,11 +300,15 @@ const describesBreakingChange = (line: string) =>
   /^`?(removed|changed|deprecated|renamed|dropped)\b/i.test(line) ||
   /\b(no longer|now requires|is now|are now)\b/i.test(line);
 
+// findNoteInPRBody escapes angle brackets; this undoes that so tags are visible.
+export const unescapeNote = (note: string) => note.replaceAll('&lt;', '<').replaceAll('&gt;', '>');
+
+// A note as it would appear in a PR body: one-line, or `Notes:` over bullets.
+export const formatNotesBlock = (note: string) =>
+  note.includes('\n') ? `Notes:\n${note}` : `Notes: ${note}`;
+
 export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
-  // findNoteInPRBody escapes angle brackets; undo that so tags are visible.
-  const lines = note
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
+  const lines = unescapeNote(note)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '');
@@ -358,7 +362,7 @@ export const lintNote = (note: string, ctx: LintContext): LintFinding[] =>
 
 // Escapes angle brackets outside backticks so GitHub does not swallow a raw
 // `<webview>` as HTML; inside inline code they render literally.
-const escapeProse = (text: string) =>
+export const escapeProse = (text: string) =>
   mapOutsideCode(text, (prose) => prose.replaceAll('<', '&lt;').replaceAll('>', '&gt;'));
 
 export const createLintCommentBody = ({ findings, fixed }: LintResult) => {
@@ -367,7 +371,7 @@ export const createLintCommentBody = ({ findings, fixed }: LintResult) => {
     return `- ${escapeProse(f.message)}${suggestion}`;
   });
   const suggested = fixed
-    ? `\n\nSuggested note:\n\n\`\`\`\n${fixed.includes('\n') ? `Notes:\n${fixed}` : `Notes: ${fixed}`}\n\`\`\``
+    ? `\n\nSuggested note:\n\n\`\`\`\n${formatNotesBlock(fixed)}\n\`\`\``
     : '';
 
   return (

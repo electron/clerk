@@ -64,6 +64,31 @@ the description is edited. Bulleted notes are checked one bullet at a time.
 
 Bot-authored PRs and trop backports (`Backport of #...`) are not linted.
 
+## Claude review of the note
+
+Once a note passes the style rules above, clerk can ask Claude for a second,
+advisory opinion on what the rules cannot judge: whether the note tells an app
+developer what actually changed. It looks for
+
+* vague notes (`Improved runtime performance.` should say what got faster or why),
+* internal jargon and C++ class names (`UAF` should be `use-after-free crash`;
+  `NativeWindowViews::SetBounds()` should become the user-visible effect),
+* notes that read like a commit subject or describe the implementation rather
+  than the effect on apps,
+* for `semver/major` PRs, whether the note says what breaks.
+
+When Claude has a rewrite, clerk posts it (with one to three short reasons) in
+the same comment the style lint uses. This is advisory only: the
+`release-notes` status stays green (`Release notes found (suggestion posted)`),
+and any API error or timeout is logged and ignored. Only the note, the PR title
+and the labels are sent, never the PR body or diff. Identical inputs are cached
+in memory so pushes that do not touch the description do not call the API
+again.
+
+To enable it, set `ANTHROPIC_API_KEY` on the Heroku app; without it this step
+is skipped. Cost is roughly one small Sonnet call (a few hundred input tokens,
+at most 400 output tokens) per change to a PR's note.
+
 ## Overriding the check
 
 Add the `release-notes-override` label to a PR to force the `release-notes`

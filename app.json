@@ -9,6 +9,10 @@
     },
     "PRIVATE_KEY": {
       "required": true
+    },
+    "ANTHROPIC_API_KEY": {
+      "required": false,
+      "description": "Enables the advisory Claude review of release notes. When unset, clerk only runs its deterministic style checks."
     }
   },
   "formation": {

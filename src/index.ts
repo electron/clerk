@@ -8,6 +8,13 @@ import {
   updatePRBodyForNoNotes,
 } from './note-utils';
 import { analyzeNote, createLintCommentBody } from './note-lint';
+import {
+  createReviewClient,
+  createReviewCommentBody,
+  REVIEW_STATUS_DESCRIPTION,
+  reviewNote,
+  type ReviewClient,
+} from './note-review';
 
 import d from 'debug';
 import {
@@ -124,6 +131,7 @@ const doUpsertLintComment = async (
 const submitFeedbackForPR = async (
   context: Context<'pull_request'>,
   pr: Context<'pull_request'>['payload']['pull_request'],
+  reviewClient: ReviewClient | null,
   botLogin: string,
   shouldComment = false,
 ) => {
@@ -197,6 +205,18 @@ const submitFeedbackForPR = async (
         await setStatus(context, pr, 'failure', 'Release notes need style fixes (see comment)');
         return;
       }
+
+      // The style rules pass; optionally ask Claude whether the note tells app
+      // developers what changed. Advisory only: the status stays green.
+      const review = reviewClient
+        ? await reviewNote({ note: releaseNotes, title: pr.title, labels }, reviewClient)
+        : null;
+      if (review?.verdict === 'suggest') {
+        debug(`Claude suggested a release note rewrite: posting advisory comment.`);
+        await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
+        await setStatus(context, pr, 'success', REVIEW_STATUS_DESCRIPTION);
+        return;
+      }
       await upsertLintComment(context, pr, null, botLogin);
     } else if (!shouldComment) {
       // The note is no longer linted (`Notes: none`, bot author or backport);
@@ -219,7 +239,9 @@ const submitFeedbackForPR = async (
   }
 };
 
-export const probotRunner = (app: Probot) => {
+// The Claude client is injected so tests can substitute a mock; the default
+// runner builds the real one once, at load, only when ANTHROPIC_API_KEY is set.
+export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: Probot) => {
   app.on('pull_request', async (context) => {
     const pr = context.payload.pull_request;
     const repo = context.payload.repository.full_name;
@@ -227,13 +249,15 @@ export const probotRunner = (app: Probot) => {
 
     if (context.payload.action === 'closed' && pr.merged) {
       debug(`Checking release notes comment on PR ${repo}#${pr.number}`);
-      await submitFeedbackForPR(context, pr, botLogin, true);
+      await submitFeedbackForPR(context, pr, reviewClient, botLogin, true);
     } else if (!pr.merged && pr.state === 'open') {
       // Only submit feedback for PRs that aren't merged and are open
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      await submitFeedbackForPR(context, pr, botLogin);
+      await submitFeedbackForPR(context, pr, reviewClient, botLogin);
     }
   });
 };
+
+export const probotRunner = createProbotRunner(createReviewClient());
 
 export default probotRunner;
