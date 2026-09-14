@@ -96,15 +96,20 @@ const PAST_TENSE: Record<string, string> = {
 
 const COMMIT_PREFIX = /^\w+(\([^)]*\))?!?:\s+/;
 
+// Whole tokens only (the lookarounds), so `semver/patches` or `no-notes-yet`
+// is prose, not metadata.
 const META_PHRASE =
-  'semver\\/(?:none|patch|minor|major)|no user[- ]facing(?: changes?)?|see breaking changes|\\bno-notes\\b';
+  '(?<![\\w-])(?:semver\\/(?:none|patch|minor|major)|no user[- ]facing(?: changes?)?|see breaking changes|no-notes)(?![\\w-])';
 const META_TEXT = new RegExp(META_PHRASE, 'i');
 // A parenthetical that is only metadata, e.g. `(See breaking changes.)`.
-const META_PARENTHETICAL = new RegExp(`\\s*\\([^()]*(?:${META_PHRASE})[^()]*\\)`, 'gi');
+const META_PARENTHETICAL = new RegExp(`\\s*\\([^()]*${META_PHRASE}[^()]*\\)`, 'gi');
 // A bare meta phrase with the clause punctuation around it, e.g. `; semver/patch`
 // or `semver/patch: `, so removing it leaves the rest of the sentence intact.
+// Whitespace is only consumed next to punctuation that is consumed too (or
+// directly before the phrase), so removing `semver/patch` from `Bumped
+// semver/patch version` leaves `Bumped version`, never `Bumpedversion`.
 const META_CLAUSE = new RegExp(
-  `\\s*[;,:\u2013\u2014-]?\\s*(?:${META_PHRASE})\\s*[;,:\u2013\u2014-]?`,
+  `(?:\\s*[;,:\u2013\u2014-])?\\s*${META_PHRASE}(?:\\s*[;,:\u2013\u2014-])?`,
   'gi',
 );
 
@@ -211,11 +216,15 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
     // crash on Windows; semver/patch.` keeps `Fixed a crash on Windows.`). A
     // note that is only metadata (e.g. `(semver/patch)` or `No user-facing
     // change; semver/none.`) is a `Notes: none`, not an empty note to punctuate.
+    // A phrase that was its own sentence (`See breaking changes. Also ...`)
+    // leaves its period behind, so orphaned and doubled sentence punctuation
+    // is normalised anywhere in the line, not just at the end.
     const stripped = line
       .replace(META_PARENTHETICAL, '')
       .replace(META_CLAUSE, '')
       .replace(/\s+([.,;:!?])/g, '$1')
-      .replace(/([.!?])[.,;:]+$/, '$1')
+      .replace(/([.!?])[.,;:]+(?=\s|$)/g, '$1')
+      .replace(/^[.,;:!?]+\s*/, '')
       .trim();
     line = /[A-Za-z\d]/.test(stripped) ? stripped : 'none';
     findings.push({
