@@ -97,8 +97,16 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
 ];
 
 // True for the `none` synonyms that mean "this change has no release note".
-export const isNoNotesNote = (note: string) =>
-  OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(note));
+// The synonym may be written as a single bullet (`Notes:\n* none`), so a
+// leading `*` or `-` marker is ignored; a bulleted note with more than one
+// item is a real note even if one of its items is a synonym.
+export const isNoNotesNote = (note: string) => {
+  const items = note
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[*-]\s*/, ''))
+    .filter((line) => line !== '');
+  return items.length === 1 && OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(items[0]));
+};
 
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {
   let body = constants.NO_NOTES_BODY;

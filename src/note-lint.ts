@@ -129,8 +129,15 @@ const BACKTICK_ALLOWLIST = new Set(
 
 // Outside backticks, in order: URLs (kept as-is), dotted identifiers with an
 // optional call, bare calls, CLI flags, angle-bracket tags, camelCase names.
+// Every alternative is anchored (lookbehind or `\b`) and the URL alternative
+// is bounded, so a long spaceless token cannot make the scan quadratic: the
+// note text is attacker-controlled (any fork PR), like the body in note-utils.
 const API_TOKEN =
-  /[a-z][\w+.-]*:\/\/\S+|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b/g;
+  /(?<![\w+.-])[a-z][\w+.-]{0,63}:\/\/\S{1,2048}|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b/g;
+
+// A note line longer than this is not style-checked at all (only its length
+// is reported), which keeps the per-line regex work bounded.
+export const MAX_LINT_LINE_LENGTH = 2000;
 
 const CODE_SPAN = /`[^`]*`/g;
 
@@ -287,8 +294,16 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
   let changed = false;
 
   items.forEach((item, i) => {
-    const result = lintLine(item);
     const prefix = bulleted ? `Bullet ${i + 1}: ` : '';
+    if (item.length > MAX_LINT_LINE_LENGTH) {
+      findings.push({
+        rule: 'length',
+        message: `${prefix}This ${bulleted ? 'bullet' : 'note'} is over ${MAX_LINT_LINE_LENGTH} characters; shorten it.`,
+      });
+      fixedItems.push(item);
+      return;
+    }
+    const result = lintLine(item);
     findings.push(...result.findings.map((f) => ({ ...f, message: prefix + f.message })));
     if (result.fixed !== item) changed = true;
     fixedItems.push(result.fixed);
@@ -296,7 +311,7 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
 
   if (!bulleted && items.length === 1) {
     const line = items[0];
-    if (line.length > 300 || countSentences(line) > 2) {
+    if (line.length <= MAX_LINT_LINE_LENGTH && (line.length > 300 || countSentences(line) > 2)) {
       findings.push({
         rule: 'length',
         message:

@@ -62,7 +62,36 @@ const getBotLogin = (app: Probot) => {
 // visible and a later regression edits the same comment instead of spawning a
 // new one. Only a comment authored by clerk's own bot user counts: a human
 // comment that quotes the marker must never be overwritten.
-const upsertLintComment = async (
+//
+// Upserts are serialised per PR: two webhook deliveries for the same PR that
+// arrive together (a redelivery, or a quick double edit) would otherwise both
+// list the comments before either has created one, and each would then create
+// its own. The second call waits for the first and so sees its comment.
+const pendingUpserts = new Map<string, Promise<void>>();
+const upsertLintComment = (
+  context: Context<'pull_request'>,
+  pr: PullRequest,
+  body: string | null,
+  botLogin: string,
+) => {
+  const { owner, repo } = context.repo();
+  const key = `${owner}/${repo}#${pr.number}`;
+  const previous = pendingUpserts.get(key) ?? Promise.resolve();
+  const run = previous.then(() => doUpsertLintComment(context, pr, body, botLogin));
+  // Track settlement only (the caller handles rejections) and drop the entry
+  // once this is the last queued upsert, so the map does not grow per PR.
+  const settled: Promise<void> = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  const tracked: Promise<void> = settled.then(() => {
+    if (pendingUpserts.get(key) === tracked) pendingUpserts.delete(key);
+  });
+  pendingUpserts.set(key, tracked);
+  return run;
+};
+
+const doUpsertLintComment = async (
   context: Context<'pull_request'>,
   pr: PullRequest,
   body: string | null,

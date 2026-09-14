@@ -8,6 +8,7 @@ import * as noteUtils from '../src/note-utils';
 import {
   LINT_COMMENT_MARKER,
   LINT_COMMENT_RESOLVED,
+  NO_NOTES_BODY,
   OVERRIDE_LABEL,
   SEMANTIC_BUILD_PREFIX,
 } from '../src/constants';
@@ -469,6 +470,82 @@ describe('probotRunner', () => {
       expectStatus(payload, 'success', 'Release notes found');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not lint a bulleted none', async () => {
+      for (const body of ['Notes:\n* none\n', 'Notes: - No notes\n']) {
+        const payload = openPR({ body });
+        noExistingComments();
+        expectStatus(payload, 'success', 'Release notes found');
+
+        await probot.receive({ id: '123', name: 'pull_request', payload });
+        expect(nock.isDone(), body).toBe(true);
+      }
+    });
+
+    it('still lints a bulleted note with a real item next to none', async () => {
+      const payload = openPR({ body: 'Notes:\n* fix crash on close\n* none\n' });
+      noExistingComments();
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('Bullet 1: Use the past tense');
+          expect(body.body).toContain('Notes:\n* Fixed a crash on close.\n* None.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('posts No Release Notes at merge time for a bulleted none', async () => {
+      const payload = {
+        ...openPR({ body: 'Notes:\n* none\n', state: 'closed', merged: true }),
+        action: 'closed',
+      } as unknown as PullRequestClosedEvent;
+
+      expectStatus(payload, 'success', 'Release notes found');
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toEqual(NO_NOTES_BODY);
+          return true;
+        })
+        .reply(201);
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('creates a single lint comment when two deliveries for one PR race', async () => {
+      const payload = openPR();
+      let created: string | undefined;
+
+      // The first delivery sees no comment and creates one; the second must
+      // wait for it, see the created comment and leave it alone.
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(created).toBeUndefined();
+          created = body.body;
+          return true;
+        })
+        .reply(201);
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, () => {
+          expect(created).toBeDefined();
+          return [{ id: 8, body: created, user: BOT_USER }];
+        });
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await Promise.all([
+        probot.receive({ id: '123', name: 'pull_request', payload }),
+        probot.receive({ id: '124', name: 'pull_request', payload }),
+      ]);
       expect(nock.isDone()).toBe(true);
     });
 

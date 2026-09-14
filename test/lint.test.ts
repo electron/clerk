@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeNote, createLintCommentBody, lintNote } from '../src/note-lint';
+import {
+  analyzeNote,
+  createLintCommentBody,
+  lintNote,
+  MAX_LINT_LINE_LENGTH,
+} from '../src/note-lint';
 import { LINT_COMMENT_MARKER } from '../src/constants';
 
 const ctx = { labels: [], title: 'fix: something' };
@@ -155,6 +160,27 @@ describe('lintNote', () => {
     expect(rules(`Fixed ${'a very long thing '.repeat(20)}in the tray.`)).toEqual(['length']);
     expect(rules('Fixed one thing. Fixed another thing.')).toEqual([]);
     expect(rules('* Fixed one.\n* Fixed two.\n* Fixed three.')).toEqual([]);
+  });
+
+  it('bounds the work done on a very long spaceless token', () => {
+    const note = `${'a-'.repeat(25_000)}a`;
+    const start = performance.now();
+    const result = analyzeNote(note, ctx);
+    expect(performance.now() - start).toBeLessThan(200);
+    expect(result.findings.map((f) => f.rule)).toEqual(['length']);
+    expect(result.findings[0].message).toContain(`over ${MAX_LINT_LINE_LENGTH} characters`);
+    expect(result.fixed).toBeNull();
+  });
+
+  it('reports only the length of an over-long bullet', () => {
+    const result = analyzeNote(`* fix one\n* ${'app.foo '.repeat(400)}`, ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual([
+      'capitalized',
+      'punctuated',
+      'past-tense',
+      'length',
+    ]);
+    expect(result.findings[3].message).toMatch(/^Bullet 2: This bullet is over/);
   });
 
   it('requires semver/major notes to describe the break', () => {
