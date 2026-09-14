@@ -75,6 +75,18 @@ describe('lintNote', () => {
     expect(rules('Fixed a thing (no-notes).')).toEqual(['meta-text']);
   });
 
+  it('treats a note that is only a meta parenthetical as Notes: none', () => {
+    for (const note of ['(semver/patch)', '(no user-facing change)']) {
+      const result = analyzeNote(note, ctx);
+      expect(result.fixed, note).toEqual('none');
+      expect(result.findings, note).toHaveLength(1);
+      expect(result.findings[0], note).toMatchObject({ rule: 'meta-text', suggestion: 'none' });
+      expect(result.findings[0].message, note).toContain('use `Notes: none`');
+      expect(createLintCommentBody(result), note).toContain('Notes: none');
+      expect(createLintCommentBody(result), note).not.toContain('Notes: .');
+    }
+  });
+
   it('wraps API-looking tokens in backticks', () => {
     const cases: [string, string][] = [
       [

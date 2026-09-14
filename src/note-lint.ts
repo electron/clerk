@@ -195,7 +195,9 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
   const meta = META_TEXT.exec(line);
   if (meta) {
     const stripped = line.replace(META_PARENTHETICAL, '').trim();
-    line = META_TEXT.test(stripped) ? 'none' : stripped;
+    // A note that is only metadata (e.g. `(semver/patch)`) strips to nothing;
+    // that is a `Notes: none`, not an empty note to punctuate.
+    line = stripped === '' || META_TEXT.test(stripped) ? 'none' : stripped;
     findings.push({
       rule: 'meta-text',
       message: `Leave out metadata like "${meta[0]}"; use \`Notes: none\` for changes users won't notice.`,

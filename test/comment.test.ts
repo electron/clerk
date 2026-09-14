@@ -20,6 +20,14 @@ const COMMENTS_PATH = '/repos/electron/electron/issues/1/comments';
 
 const noExistingComments = () => nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
 
+const BOT_USER = { login: 'release-clerk[bot]', type: 'Bot' };
+const HUMAN_USER = { login: 'codebytere', type: 'User' };
+const botLintComment = (id: number) => ({
+  id,
+  body: `${LINT_COMMENT_MARKER}\nstale findings`,
+  user: BOT_USER,
+});
+
 const expectStatus = (
   payload: { pull_request: { head: { sha: string } } },
   state: 'success' | 'failure',
@@ -373,13 +381,59 @@ describe('probotRunner', () => {
       nock(GH_API)
         .get(COMMENTS_PATH)
         .query(true)
-        .reply(200, [
-          { id: 7, body: 'unrelated comment' },
-          { id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` },
-        ]);
+        .reply(200, [{ id: 7, body: 'unrelated comment', user: HUMAN_USER }, botLintComment(8)]);
       nock(GH_API)
         .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
           expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not edit a human comment that quotes the marker', async () => {
+      const payload = openPR();
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [
+          { id: 7, body: `Quoting clerk: ${LINT_COMMENT_MARKER}`, user: HUMAN_USER },
+          {
+            id: 9,
+            body: `${LINT_COMMENT_MARKER}\nfrom another bot`,
+            user: { login: 'other[bot]', type: 'Bot' },
+          },
+        ]);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('updates only the comment authored by the bot when a human also quotes the marker', async () => {
+      const payload = openPR();
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [
+          { id: 7, body: `Quoting clerk: ${LINT_COMMENT_MARKER}`, user: HUMAN_USER },
+          botLintComment(8),
+        ]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
           expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
           return true;
         })
@@ -396,7 +450,7 @@ describe('probotRunner', () => {
       nock(GH_API)
         .get(COMMENTS_PATH)
         .query(true)
-        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` }]);
+        .reply(200, [botLintComment(8)]);
       nock(GH_API)
         .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
           expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
@@ -465,7 +519,7 @@ describe('probotRunner', () => {
       nock(GH_API)
         .get(COMMENTS_PATH)
         .query(true)
-        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` }]);
+        .reply(200, [botLintComment(8)]);
       nock(GH_API)
         .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
           expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
@@ -484,7 +538,7 @@ describe('probotRunner', () => {
       nock(GH_API)
         .get(COMMENTS_PATH)
         .query(true)
-        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale findings` }]);
+        .reply(200, [botLintComment(8)]);
       nock(GH_API)
         .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
           expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
