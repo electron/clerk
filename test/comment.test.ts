@@ -787,6 +787,7 @@ describe('probotRunner', () => {
         { body: 'Notes: none\n' },
       ]) {
         const payload = openPR(overrides);
+        noExistingComments();
         expectStatus(payload, 'success', 'Release notes found');
         await probot.receive({ id: '123', name: 'pull_request', payload });
       }
@@ -797,6 +798,7 @@ describe('probotRunner', () => {
     it('does not review when the override label is present', async () => {
       const create = loadWithClient(vi.fn());
       const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+      noExistingComments();
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
