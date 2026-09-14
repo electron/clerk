@@ -4,7 +4,12 @@ import nock from 'nock';
 import { type Context, Probot } from 'probot';
 
 import { createProbotRunner, probotRunner } from '../src/index';
-import { clearReviewCache, REVIEW_STATUS_DESCRIPTION, type ReviewClient } from '../src/note-review';
+import {
+  clearReviewCache,
+  REVIEW_STATUS_DESCRIPTION,
+  type ReviewClient,
+  type ReviewResult,
+} from '../src/note-review';
 import * as noteUtils from '../src/note-utils';
 import {
   LINT_COMMENT_MARKER,
@@ -19,6 +24,7 @@ type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
 
 const GH_API = 'https://api.github.com';
 const COMMENTS_PATH = '/repos/electron/electron/issues/1/comments';
+const PULL_PATH = '/repos/electron/electron/pulls/1';
 
 const noExistingComments = () => nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
 
@@ -684,6 +690,21 @@ describe('probotRunner', () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
 
+    // After the review the PR is re-read to make sure the event's snapshot is
+    // still current; this answers with the snapshot itself (or overrides).
+    const pullFetch = (
+      payload: PullRequestOpenedEvent,
+      overrides: Partial<{ head: { sha: string }; body: string }> = {},
+    ) =>
+      nock(GH_API)
+        .get(PULL_PATH)
+        .reply(200, {
+          number: 1,
+          head: payload.pull_request.head,
+          body: payload.pull_request.body,
+          ...overrides,
+        });
+
     // Replaces the default probot (whose runner has no client in tests) with
     // one wired to the given mock; null means "ANTHROPIC_API_KEY unset".
     const loadWithClient = <T extends ReviewClient['messages']['create'] | null>(create: T) => {
@@ -709,6 +730,7 @@ describe('probotRunner', () => {
       );
       const payload = openPR();
 
+      pullFetch(payload);
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       nock(GH_API)
         .post(COMMENTS_PATH, (body: Record<string, string>) => {
@@ -736,6 +758,7 @@ describe('probotRunner', () => {
       );
       const payload = openPR();
 
+      pullFetch(payload);
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
@@ -748,6 +771,7 @@ describe('probotRunner', () => {
       loadWithClient(vi.fn(async () => Promise.reject(new Error('Request timed out.'))));
       const payload = openPR();
 
+      pullFetch(payload);
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
@@ -813,6 +837,7 @@ describe('probotRunner', () => {
         ),
       );
 
+      pullFetch(openPR());
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       nock(GH_API).post(COMMENTS_PATH).reply(201, { id: 8 });
       expectStatus(openPR(), 'success', REVIEW_STATUS_DESCRIPTION);
@@ -821,6 +846,7 @@ describe('probotRunner', () => {
       // Second push: the comment already exists with the same body, so it is
       // left alone, and the cached verdict means no second API call.
       const second = openPR({ head: { sha: 'def456' } });
+      pullFetch(second);
       nock(GH_API)
         .get(COMMENTS_PATH)
         .query(true)
@@ -833,6 +859,79 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(second, 'success', REVIEW_STATUS_DESCRIPTION);
       await probot.receive({ id: '2', name: 'pull_request', payload: second });
+
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing when the PR head moved on during the review', async () => {
+      const create = loadWithClient(
+        vi.fn(async () =>
+          claudeReplies({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] }),
+        ),
+      );
+      const payload = openPR();
+
+      // No comments listing, no comment and no status are mocked: any of them
+      // would be an unmatched request and fail the delivery.
+      pullFetch(payload, { head: { sha: 'def456' } });
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing when the PR description changed during the review', async () => {
+      loadWithClient(
+        vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
+      );
+      const payload = openPR();
+
+      pullFetch(payload, { body: 'Fixes something broken\n\nNotes: Fixed the tray.\n' });
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('lets a newer failing push win over an older event still in review', async () => {
+      // The first delivery is mid-review when a push arrives whose note fails
+      // the style rules. Deliveries are serialised per PR, so the second waits;
+      // the first then re-reads the PR, sees the newer head and writes nothing,
+      // and the second posts its findings. Without this the second's failing
+      // comment would be posted and then marked resolved by the first.
+      let finishReview!: (result: ReviewResult & { suggestion: string }) => void;
+      const create = loadWithClient(
+        vi.fn(
+          () =>
+            new Promise<ReturnType<typeof claudeReplies>>((resolve) => {
+              finishReview = (result) => resolve(claudeReplies(result));
+            }),
+        ),
+      );
+      const first = openPR();
+      const second = openPR({
+        head: { sha: 'def456' },
+        body: 'Fixes something broken\n\nNotes: fix crash for Notification close\n',
+      });
+
+      pullFetch(second);
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('Release note style suggestions');
+          expect(body.body).not.toContain(SUGGESTION);
+          return true;
+        })
+        .reply(201);
+      expectStatus(second, 'failure', 'Release notes need style fixes (see comment)');
+
+      const deliveries = Promise.all([
+        probot.receive({ id: '1', name: 'pull_request', payload: first }),
+        probot.receive({ id: '2', name: 'pull_request', payload: second }),
+      ]);
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      finishReview({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] });
+      await deliveries;
 
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(1);

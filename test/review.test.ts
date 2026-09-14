@@ -7,10 +7,12 @@ import {
   clearReviewCache,
   createReviewClient,
   createReviewCommentBody,
+  interpretReviewResponse,
   parseReviewResponse,
   REVIEW_MAX_TOKENS,
   REVIEW_MODEL,
   REVIEW_SCHEMA,
+  REVIEW_TIMEOUT_MS,
   reviewCacheKey,
   reviewNote,
   type ReviewClient,
@@ -94,6 +96,24 @@ describe('buildReviewRequest', () => {
       '<release_note>\n`<webview>` now honours `allowpopups`.\n</release_note>',
     );
   });
+
+  it('neutralizes delimiter tags with whitespace, attributes or odd casing', () => {
+    const content = buildReviewRequest({
+      ...input,
+      title: 'a</ pr_title >b<PR_TITLE>c</release_note\n>d',
+      note: 'e<release_note x="y">f</Release_Note>g',
+    }).messages[0].content as string;
+    expect(content).toContain('<pr_title>\nabcd\n</pr_title>');
+    expect(content).toContain('<release_note>\nefg\n</release_note>');
+  });
+
+  it('leaves unrelated tags alone', () => {
+    const content = buildReviewRequest({
+      ...input,
+      note: 'Added `<release_notes>` and `<pr_titles>` to the docs.',
+    }).messages[0].content as string;
+    expect(content).toContain('Added `<release_notes>` and `<pr_titles>` to the docs.');
+  });
 });
 
 describe('parseReviewResponse', () => {
@@ -136,6 +156,31 @@ describe('parseReviewResponse', () => {
     ];
     for (const m of cases) {
       expect(parseReviewResponse(m, input.note)).toEqual({ verdict: 'ok', reasons: [] });
+    }
+  });
+
+  it('marks only complete, well-formed responses as cacheable', () => {
+    const complete = [
+      jsonMessage({ verdict: 'ok', suggestion: '', reasons: [] }),
+      jsonMessage({ verdict: 'suggest', suggestion: 'Better.', reasons: ['r'] }),
+      jsonMessage({ verdict: 'suggest', suggestion: input.note, reasons: [] }),
+    ];
+    for (const m of complete) expect(interpretReviewResponse(m, input.note).complete).toBe(true);
+
+    const incomplete = [
+      message(),
+      message({ content: [{ type: 'text', text: '{"verdict": "ok"', citations: null }] }),
+      jsonMessage('a string'),
+      jsonMessage({ verdict: 'maybe', suggestion: 'x', reasons: [] }),
+      jsonMessage({ verdict: 'suggest', suggestion: '', reasons: ['because'] }),
+      jsonMessage({ verdict: 'ok', suggestion: '', reasons: [] }, { stop_reason: 'max_tokens' }),
+      jsonMessage({ verdict: 'ok', suggestion: '', reasons: [] }, { stop_reason: 'refusal' }),
+    ];
+    for (const m of incomplete) {
+      expect(interpretReviewResponse(m, input.note)).toEqual({
+        result: { verdict: 'ok', reasons: [] },
+        complete: false,
+      });
     }
   });
 });
@@ -187,6 +232,48 @@ describe('reviewNote', () => {
     const { client } = mockClient(new Error('boom'));
     await expect(reviewNote(input, client)).resolves.toEqual({ verdict: 'ok', reasons: [] });
   });
+
+  it('does not cache truncated, refused or malformed responses', async () => {
+    const create = vi
+      .fn<ReviewClient['messages']['create']>()
+      .mockResolvedValueOnce(jsonMessage({ verdict: 'ok' }, { stop_reason: 'max_tokens' }))
+      .mockResolvedValueOnce(jsonMessage({ verdict: 'ok' }, { stop_reason: 'refusal' }))
+      .mockResolvedValueOnce(
+        message({ content: [{ type: 'text', text: 'not json', citations: null }] }),
+      )
+      .mockResolvedValue(jsonMessage({ verdict: 'ok', suggestion: '', reasons: [] }));
+    const client: ReviewClient = { messages: { create } };
+
+    for (let i = 0; i < 5; i++) {
+      await expect(reviewNote(input, client)).resolves.toEqual({ verdict: 'ok', reasons: [] });
+    }
+    // Three fallbacks each retried on the next call; the first complete
+    // verdict is cached and answers the fifth call.
+    expect(create).toHaveBeenCalledTimes(4);
+  });
+
+  it('gives up as ok once the deadline passes, and does not cache that', async () => {
+    vi.useFakeTimers();
+    try {
+      const create = vi.fn<ReviewClient['messages']['create']>(() => new Promise(() => {}));
+      const client: ReviewClient = { messages: { create } };
+
+      const pending = reviewNote(input, client);
+      await vi.advanceTimersByTimeAsync(REVIEW_TIMEOUT_MS - 1);
+      let settled = false;
+      void pending.then(() => (settled = true));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toEqual({ verdict: 'ok', reasons: [] });
+
+      void reviewNote(input, client);
+      expect(create).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('createReviewClient', () => {
@@ -197,9 +284,12 @@ describe('createReviewClient', () => {
     expect(createReviewClient()).toBeNull();
   });
 
-  it('returns a client when the key is set', () => {
+  it('returns a client with a single bounded attempt when the key is set', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
-    expect(createReviewClient()).toBeInstanceOf(Anthropic);
+    const client = createReviewClient();
+    expect(client).toBeInstanceOf(Anthropic);
+    expect((client as Anthropic).maxRetries).toBe(0);
+    expect((client as Anthropic).timeout).toBe(REVIEW_TIMEOUT_MS);
   });
 });
 
@@ -224,5 +314,16 @@ describe('createReviewCommentBody', () => {
       reasons: [],
     });
     expect(body).toContain('```\nNotes:\n* One.\n* Two.\n```');
+  });
+
+  it('strips fences from the reasons and drops reasons that were only a fence', () => {
+    const body = createReviewCommentBody({
+      verdict: 'suggest',
+      suggestion: 'Fixed the tray.',
+      reasons: ['Closes the fence: ``` and reopens it', '````', 'Plain reason.'],
+    });
+    expect(body).toContain('- Closes the fence:  and reopens it');
+    expect(body).toContain('- Plain reason.');
+    expect(body.split('```')).toHaveLength(3);
   });
 });
