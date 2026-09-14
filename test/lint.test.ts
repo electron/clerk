@@ -80,6 +80,46 @@ describe('lintNote', () => {
     expect(rules('Fixed a thing (no-notes).')).toEqual(['meta-text']);
   });
 
+  it('strips bare metadata but keeps the real note around it', () => {
+    const cases: [string, string][] = [
+      ['Fixed a crash on Windows; semver/patch.', 'Fixed a crash on Windows.'],
+      ['Fixed a crash on Windows. See breaking changes.', 'Fixed a crash on Windows.'],
+      ['semver/patch: Fixed a crash on Windows.', 'Fixed a crash on Windows.'],
+      ['Fixed a crash on Windows (no user-facing change).', 'Fixed a crash on Windows.'],
+      ['No user-facing changes.', 'none'],
+      ['no-notes', 'none'],
+      ['Bumped semver/patch version for internal tooling.', 'Bumped version for internal tooling.'],
+      ['See breaking changes. Also improved performance.', 'Also improved performance.'],
+    ];
+    for (const [note, fixed] of cases) {
+      const result = analyzeNote(note, ctx);
+      expect(result.fixed, note).toEqual(fixed);
+      expect(result.findings, note).toHaveLength(1);
+      expect(result.findings[0], note).toMatchObject({ rule: 'meta-text', suggestion: fixed });
+    }
+    const body = createLintCommentBody(analyzeNote('Fixed a crash on Windows; semver/patch.', ctx));
+    expect(body).toContain('```\nNotes: Fixed a crash on Windows.\n```');
+
+    // Three sentences also trips the length rule; the meta suggestion itself
+    // must not leave a doubled period behind.
+    const mid = analyzeNote(
+      'Fixed a crash on Windows. See breaking changes. Also improved performance.',
+      ctx,
+    );
+    expect(mid.findings.map((f) => f.rule)).toEqual(['meta-text', 'length']);
+    expect(mid.findings[0].suggestion).toEqual(
+      'Fixed a crash on Windows. Also improved performance.',
+    );
+    expect(mid.fixed).toEqual('Fixed a crash on Windows. Also improved performance.');
+  });
+
+  it('only treats whole meta phrases as metadata', () => {
+    const result = analyzeNote('Improve semver/patches handling.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['past-tense']);
+    expect(result.fixed).toEqual('Improved semver/patches handling.');
+    expect(rules('Added a no-notes-yet mode.')).toEqual([]);
+  });
+
   it('treats a note that is only a meta parenthetical as Notes: none', () => {
     for (const note of ['(semver/patch)', '(no user-facing change)']) {
       const result = analyzeNote(note, ctx);
