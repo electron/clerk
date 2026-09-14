@@ -31,6 +31,12 @@ multiple notes, use a single `Notes:` followed by a bulleted list (see below).
   - Notes: remove upstream code that used private Mac APIs
   + Notes: Removed upstream code that used private Mac APIs.
   ```
+
+* Keep notes under 80 characters.
+  ```diff
+  - Notes: Deprecated the synchronous `safeStorage.isEncryptionAvailable()`, `safeStorage.encryptString()` and `safeStorage.decryptString()` in favor of `isAsyncEncryptionAvailable()`, `encryptStringAsync()` and `decryptStringAsync()`.
+  + Notes: Deprecated synchronous `safeStorage` functions.
+  ```
   
 * Multi-line release notes
   ```md
