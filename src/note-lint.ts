@@ -96,11 +96,17 @@ const PAST_TENSE: Record<string, string> = {
 
 const COMMIT_PREFIX = /^\w+(\([^)]*\))?!?:\s+/;
 
-const META_TEXT =
-  /semver\/(none|patch|minor|major)|no user[- ]facing|see breaking changes|\bno-notes\b/i;
+const META_PHRASE =
+  'semver\\/(?:none|patch|minor|major)|no user[- ]facing(?: changes?)?|see breaking changes|\\bno-notes\\b';
+const META_TEXT = new RegExp(META_PHRASE, 'i');
 // A parenthetical that is only metadata, e.g. `(See breaking changes.)`.
-const META_PARENTHETICAL =
-  /\s*\([^()]*(?:semver\/|no user[- ]facing|see breaking changes|no-notes)[^()]*\)/gi;
+const META_PARENTHETICAL = new RegExp(`\\s*\\([^()]*(?:${META_PHRASE})[^()]*\\)`, 'gi');
+// A bare meta phrase with the clause punctuation around it, e.g. `; semver/patch`
+// or `semver/patch: `, so removing it leaves the rest of the sentence intact.
+const META_CLAUSE = new RegExp(
+  `\\s*[;,:\u2013\u2014-]?\\s*(?:${META_PHRASE})\\s*[;,:\u2013\u2014-]?`,
+  'gi',
+);
 
 // Words that look like APIs but are prose. Compared case-insensitively
 // without any trailing period.
@@ -201,10 +207,17 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
 
   const meta = META_TEXT.exec(line);
   if (meta) {
-    const stripped = line.replace(META_PARENTHETICAL, '').trim();
-    // A note that is only metadata (e.g. `(semver/patch)`) strips to nothing;
-    // that is a `Notes: none`, not an empty note to punctuate.
-    line = stripped === '' || META_TEXT.test(stripped) ? 'none' : stripped;
+    // Remove just the metadata and keep any real note around it (e.g. `Fixed a
+    // crash on Windows; semver/patch.` keeps `Fixed a crash on Windows.`). A
+    // note that is only metadata (e.g. `(semver/patch)` or `No user-facing
+    // change; semver/none.`) is a `Notes: none`, not an empty note to punctuate.
+    const stripped = line
+      .replace(META_PARENTHETICAL, '')
+      .replace(META_CLAUSE, '')
+      .replace(/\s+([.,;:!?])/g, '$1')
+      .replace(/([.!?])[.,;:]+$/, '$1')
+      .trim();
+    line = /[A-Za-z\d]/.test(stripped) ? stripped : 'none';
     findings.push({
       rule: 'meta-text',
       message: `Leave out metadata like "${meta[0]}"; use \`Notes: none\` for changes users won't notice.`,

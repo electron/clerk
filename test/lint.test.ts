@@ -80,6 +80,25 @@ describe('lintNote', () => {
     expect(rules('Fixed a thing (no-notes).')).toEqual(['meta-text']);
   });
 
+  it('strips bare metadata but keeps the real note around it', () => {
+    const cases: [string, string][] = [
+      ['Fixed a crash on Windows; semver/patch.', 'Fixed a crash on Windows.'],
+      ['Fixed a crash on Windows. See breaking changes.', 'Fixed a crash on Windows.'],
+      ['semver/patch: Fixed a crash on Windows.', 'Fixed a crash on Windows.'],
+      ['Fixed a crash on Windows (no user-facing change).', 'Fixed a crash on Windows.'],
+      ['No user-facing changes.', 'none'],
+      ['no-notes', 'none'],
+    ];
+    for (const [note, fixed] of cases) {
+      const result = analyzeNote(note, ctx);
+      expect(result.fixed, note).toEqual(fixed);
+      expect(result.findings, note).toHaveLength(1);
+      expect(result.findings[0], note).toMatchObject({ rule: 'meta-text', suggestion: fixed });
+    }
+    const body = createLintCommentBody(analyzeNote('Fixed a crash on Windows; semver/patch.', ctx));
+    expect(body).toContain('```\nNotes: Fixed a crash on Windows.\n```');
+  });
+
   it('treats a note that is only a meta parenthetical as Notes: none', () => {
     for (const note of ['(semver/patch)', '(no user-facing change)']) {
       const result = analyzeNote(note, ctx);
