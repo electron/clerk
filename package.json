@@ -8,6 +8,7 @@
     "node": "24.x"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "debug": "^4.3.4",
     "probot": "^14.2.4"
   },

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import nock from 'nock';
 import { type Context, Probot } from 'probot';
 
-import { probotRunner } from '../src/index';
+import { createProbotRunner, probotRunner } from '../src/index';
+import { clearReviewCache, REVIEW_STATUS_DESCRIPTION, type ReviewClient } from '../src/note-review';
 import * as noteUtils from '../src/note-utils';
 import {
   LINT_COMMENT_MARKER,
@@ -644,6 +645,195 @@ describe('probotRunner', () => {
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
+    });
+  });
+
+  describe('Claude review of the note', () => {
+    const CLEAN_NOTE = 'Fixed a UAF with the tray.';
+    const SUGGESTION = 'Fixed a use-after-free crash when destroying a tray icon.';
+
+    const openPR = (overrides: Record<string, unknown> = {}) =>
+      ({
+        action: 'synchronize',
+        pull_request: {
+          number: 1,
+          body: `Fixes something broken\n\nNotes: ${CLEAN_NOTE}\n`,
+          title: 'fix: UAF in TrayIconCocoa',
+          user: { login: 'codebytere', type: 'User' },
+          labels: [{ name: 'semver/patch' }],
+          head: { sha: 'abc123' },
+          state: 'open',
+          merged: false,
+          ...overrides,
+        },
+        repository: {
+          name: 'electron',
+          owner: { login: 'electron' },
+          full_name: 'electron/electron',
+        },
+      }) as PullRequestOpenedEvent;
+
+    const claudeReplies = (json: unknown) => ({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [{ type: 'text', text: JSON.stringify(json), citations: null }],
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+    // Replaces the default probot (whose runner has no client in tests) with
+    // one wired to the given mock; null means "ANTHROPIC_API_KEY unset".
+    const loadWithClient = <T extends ReviewClient['messages']['create'] | null>(create: T) => {
+      probot = new Probot({
+        privateKey: '9489ead8d9cb3566ba761a2c3dd278822f8d1205',
+        appId: 690857,
+      });
+      probot.load(createProbotRunner(create && { messages: { create } }));
+      return create;
+    };
+
+    beforeEach(() => clearReviewCache());
+
+    it('posts the suggestion in the marker comment and keeps the status green', async () => {
+      const create = loadWithClient(
+        vi.fn(async () =>
+          claudeReplies({
+            verdict: 'suggest',
+            suggestion: SUGGESTION,
+            reasons: ['UAF is internal jargon.'],
+          }),
+        ),
+      );
+      const payload = openPR();
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Suggested release note (advisory)');
+          expect(body.body).toContain(`Notes: ${SUGGESTION}`);
+          expect(body.body).toContain('- UAF is internal jargon.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'success', REVIEW_STATUS_DESCRIPTION);
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
+      const request = create.mock.calls[0][0];
+      expect(request.messages[0].content).toContain(CLEAN_NOTE);
+      expect(request.messages[0].content).toContain('fix: UAF in TrayIconCocoa');
+      expect(request.messages[0].content).not.toContain('Fixes something broken');
+    });
+
+    it('posts nothing when Claude says the note is fine', async () => {
+      const create = loadWithClient(
+        vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
+      );
+      const payload = openPR();
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the status green and posts nothing when the API fails', async () => {
+      loadWithClient(vi.fn(async () => Promise.reject(new Error('Request timed out.'))));
+      const payload = openPR();
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not review when no client is configured', async () => {
+      loadWithClient(null);
+      const payload = openPR();
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not review a note that still has style findings', async () => {
+      const create = loadWithClient(vi.fn());
+      const payload = openPR({ body: 'Notes: fix crash for Notification close\n' });
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API).post(COMMENTS_PATH).reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('does not review bot authors, backports or Notes: none', async () => {
+      const create = loadWithClient(vi.fn());
+      for (const overrides of [
+        { user: { login: 'trop[bot]', type: 'Bot' } },
+        { body: `Backport of #12345\n\nNotes: ${CLEAN_NOTE}\n` },
+        { body: 'Notes: none\n' },
+      ]) {
+        const payload = openPR(overrides);
+        expectStatus(payload, 'success', 'Release notes found');
+        await probot.receive({ id: '123', name: 'pull_request', payload });
+      }
+      expect(nock.isDone()).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('does not review when the override label is present', async () => {
+      const create = loadWithClient(vi.fn());
+      const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+      expectStatus(payload, 'success', 'Release notes check overridden by label');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('calls the API once for repeated events with the same note', async () => {
+      const create = loadWithClient(
+        vi.fn(async () =>
+          claudeReplies({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] }),
+        ),
+      );
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API).post(COMMENTS_PATH).reply(201, { id: 8 });
+      expectStatus(openPR(), 'success', REVIEW_STATUS_DESCRIPTION);
+      await probot.receive({ id: '1', name: 'pull_request', payload: openPR() });
+
+      // Second push: the comment already exists with the same body, so it is
+      // left alone, and the cached verdict means no second API call.
+      const second = openPR({ head: { sha: 'def456' } });
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [{ id: 8, body: `${LINT_COMMENT_MARKER}\nstale`, user: BOT_USER }]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toContain(`Notes: ${SUGGESTION}`);
+          return true;
+        })
+        .reply(200);
+      expectStatus(second, 'success', REVIEW_STATUS_DESCRIPTION);
+      await probot.receive({ id: '2', name: 'pull_request', payload: second });
+
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
     });
   });
 });
