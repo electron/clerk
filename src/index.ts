@@ -64,41 +64,37 @@ const getBotLogin = (app: Probot) => {
   return botLogin;
 };
 
-// Posts or updates the single clerk-owned lint comment on a PR. The comment is
-// kept (not deleted) once the note is clean so the author's edit history stays
-// visible and a later regression edits the same comment instead of spawning a
-// new one. Only a comment authored by clerk's own bot user counts: a human
-// comment that quotes the marker must never be overwritten.
-//
-// Upserts are serialised per PR: two webhook deliveries for the same PR that
-// arrive together (a redelivery, or a quick double edit) would otherwise both
-// list the comments before either has created one, and each would then create
-// its own. The second call waits for the first and so sees its comment.
-const pendingUpserts = new Map<string, Promise<void>>();
-const upsertLintComment = (
-  context: Context<'pull_request'>,
-  pr: PullRequest,
-  body: string | null,
-  botLogin: string,
-) => {
-  const { owner, repo } = context.repo();
-  const key = `${owner}/${repo}#${pr.number}`;
-  const previous = pendingUpserts.get(key) ?? Promise.resolve();
-  const run = previous.then(() => doUpsertLintComment(context, pr, body, botLogin));
+// Feedback for one PR is serialised: two webhook deliveries for the same PR
+// that arrive together (a redelivery, a quick double edit, or a push while an
+// earlier event still waits on the Claude review) would otherwise interleave
+// their reads and writes. Both could list the comments before either has
+// created one and each would create its own; or the newer push's failing
+// comment could be posted first and then marked resolved by the older, slower
+// event. The second call waits for the first to finish entirely.
+const pendingFeedback = new Map<string, Promise<void>>();
+const serializePerPR = <T>(key: string, task: () => Promise<T>): Promise<T> => {
+  const previous = pendingFeedback.get(key) ?? Promise.resolve();
+  const run = previous.then(task);
   // Track settlement only (the caller handles rejections) and drop the entry
-  // once this is the last queued upsert, so the map does not grow per PR.
+  // once this is the last queued task, so the map does not grow per PR.
   const settled: Promise<void> = run.then(
     () => undefined,
     () => undefined,
   );
   const tracked: Promise<void> = settled.then(() => {
-    if (pendingUpserts.get(key) === tracked) pendingUpserts.delete(key);
+    if (pendingFeedback.get(key) === tracked) pendingFeedback.delete(key);
   });
-  pendingUpserts.set(key, tracked);
+  pendingFeedback.set(key, tracked);
   return run;
 };
 
-const doUpsertLintComment = async (
+// Posts or updates the single clerk-owned lint comment on a PR. The comment is
+// kept (not deleted) once the note is clean so the author's edit history stays
+// visible and a later regression edits the same comment instead of spawning a
+// new one. Only a comment authored by clerk's own bot user counts: a human
+// comment that quotes the marker must never be overwritten. Callers run inside
+// serializePerPR, which is what keeps the list-then-create from racing.
+const upsertLintComment = async (
   context: Context<'pull_request'>,
   pr: PullRequest,
   body: string | null,
@@ -126,6 +122,15 @@ const doUpsertLintComment = async (
     debug('Creating release note lint comment');
     await github.rest.issues.createComment(context.repo({ issue_number: pr.number, body }));
   }
+};
+
+// The Claude review can take seconds. A push or description edit in that time
+// makes the event's snapshot of the PR stale, and the event for that change
+// posts its own result; writing from the stale snapshot could resolve the newer
+// event's failing comment or set a status for the wrong head.
+const isPRUnchanged = async (context: Context<'pull_request'>, pr: PullRequest) => {
+  const { data } = await context.octokit.rest.pulls.get(context.repo({ pull_number: pr.number }));
+  return data.head.sha === pr.head.sha && (data.body ?? '') === (pr.body ?? '');
 };
 
 const submitFeedbackForPR = async (
@@ -211,6 +216,10 @@ const submitFeedbackForPR = async (
       const review = reviewClient
         ? await reviewNote({ note: releaseNotes, title: pr.title, labels }, reviewClient)
         : null;
+      if (reviewClient && !(await isPRUnchanged(context, pr))) {
+        debug(`PR changed during the Claude review: leaving the write to the newer event.`);
+        return;
+      }
       if (review?.verdict === 'suggest') {
         debug(`Claude suggested a release note rewrite: posting advisory comment.`);
         await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
@@ -253,7 +262,9 @@ export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: P
     } else if (!pr.merged && pr.state === 'open') {
       // Only submit feedback for PRs that aren't merged and are open
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      await submitFeedbackForPR(context, pr, reviewClient, botLogin);
+      await serializePerPR(`${repo}#${pr.number}`, () =>
+        submitFeedbackForPR(context, pr, reviewClient, botLogin),
+      );
     }
   });
 };
