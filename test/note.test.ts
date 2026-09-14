@@ -6,6 +6,7 @@ import {
   findNoteInPRBody,
   updatePRBodyForNoNotes,
   createPRCommentFromNotes,
+  isNoNotesNote,
 } from '../src/note-utils';
 
 describe('note detection', () => {
@@ -123,6 +124,24 @@ describe('comment generation', () => {
     expect(createPRCommentFromNotes(note)).toEqual(constants.NO_NOTES_BODY);
 
     expect(createPRCommentFromNotes('no-notes')).toEqual(constants.NO_NOTES_BODY);
+  });
+
+  it('shows no-notes for a bulleted none', () => {
+    for (const note of ['* none', '- No notes', '* no-notes.', '*none']) {
+      expect(isNoNotesNote(note), note).toBe(true);
+      expect(createPRCommentFromNotes(note), note).toEqual(constants.NO_NOTES_BODY);
+    }
+    expect(createPRCommentFromNotes(findNoteInPRBody('Notes:\n* none\n'))).toEqual(
+      constants.NO_NOTES_BODY,
+    );
+  });
+
+  it('shows a bulleted note that has a real item next to none', () => {
+    const note = '* Fixed a crash.\n* none';
+    expect(isNoNotesNote(note)).toBe(false);
+    const comment = createPRCommentFromNotes(note);
+    expect(comment).toEqual(expect.stringContaining(constants.NOTES_LEAD));
+    expect(comment).toEqual(expect.stringContaining('> * Fixed a crash.'));
   });
 
   it('shows no-notes when a HTML comment is left in the PR', () => {

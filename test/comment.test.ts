@@ -5,12 +5,44 @@ import { type Context, Probot } from 'probot';
 
 import { probotRunner } from '../src/index';
 import * as noteUtils from '../src/note-utils';
-import { SEMANTIC_BUILD_PREFIX } from '../src/constants';
+import {
+  LINT_COMMENT_MARKER,
+  LINT_COMMENT_RESOLVED,
+  NO_NOTES_BODY,
+  OVERRIDE_LABEL,
+  SEMANTIC_BUILD_PREFIX,
+} from '../src/constants';
 
 type PullRequestOpenedEvent = Context<'pull_request.opened'>['payload'];
 type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
 
 const GH_API = 'https://api.github.com';
+const COMMENTS_PATH = '/repos/electron/electron/issues/1/comments';
+
+const noExistingComments = () => nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+
+const BOT_USER = { login: 'release-clerk[bot]', type: 'Bot' };
+const HUMAN_USER = { login: 'codebytere', type: 'User' };
+const botLintComment = (id: number) => ({
+  id,
+  body: `${LINT_COMMENT_MARKER}\nstale findings`,
+  user: BOT_USER,
+});
+
+const expectStatus = (
+  payload: { pull_request: { head: { sha: string } } },
+  state: 'success' | 'failure',
+  description: string,
+) =>
+  nock(GH_API)
+    .post(
+      `/repos/electron/electron/statuses/${payload.pull_request.head.sha}`,
+      (body: Record<string, string>) => {
+        expect(body).toMatchObject({ context: 'release-notes', description, state });
+        return true;
+      },
+    )
+    .reply(200);
 
 describe('probotRunner', () => {
   let probot: Probot;
@@ -225,13 +257,13 @@ describe('probotRunner', () => {
   });
 
   it('should post a success status if release notes are found', async () => {
-    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Notes: added a new feature');
+    vi.spyOn(noteUtils, 'findNoteInPRBody').mockReturnValue('Added a new feature.');
 
     const payload = {
       action: 'opened',
       pull_request: {
         number: 1,
-        body: 'Notes: Added a new feature',
+        body: 'Notes: Added a new feature.',
         title: 'feat: add new exciting feature',
         user: { login: 'codebytere' },
         head: { sha: 'abc123' },
@@ -245,21 +277,11 @@ describe('probotRunner', () => {
       },
     } as PullRequestOpenedEvent;
 
-    nock(GH_API)
-      .post(
-        `/repos/electron/electron/statuses/${payload.pull_request.head.sha}`,
-        (body: Record<string, string>) => {
-          expect(body).toMatchObject({
-            context: 'release-notes',
-            description: 'Release notes found',
-            state: 'success',
-          });
-          return true;
-        },
-      )
-      .reply(200);
+    nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+    expectStatus(payload, 'success', 'Release notes found');
 
     await probot.receive({ id: '123', name: 'pull_request', payload });
+    expect(nock.isDone()).toBe(true);
   });
 
   it('should create a comment if release notes are found and shouldComment is true', async () => {
@@ -312,5 +334,316 @@ describe('probotRunner', () => {
       .reply(200);
 
     await probot.receive({ id: '123', name: 'pull_request', payload });
+  });
+
+  describe('release note style lint', () => {
+    const openPR = (overrides: Record<string, unknown> = {}) =>
+      ({
+        action: 'edited',
+        pull_request: {
+          number: 1,
+          body: 'Fixes something broken\n\nNotes: fix crash for Notification close\n',
+          title: 'fix: something broken',
+          user: { login: 'codebytere', type: 'User' },
+          labels: [],
+          head: { sha: 'abc123' },
+          state: 'open',
+          merged: false,
+          ...overrides,
+        },
+        repository: {
+          name: 'electron',
+          owner: { login: 'electron' },
+          full_name: 'electron/electron',
+        },
+      }) as PullRequestOpenedEvent;
+
+    it('posts a lint comment and a failure status when the note has style findings', async () => {
+      const payload = openPR();
+
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Use the past tense: "Fixed" instead of "fix".');
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('updates the existing lint comment instead of creating a new one', async () => {
+      const payload = openPR();
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [{ id: 7, body: 'unrelated comment', user: HUMAN_USER }, botLintComment(8)]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not edit a human comment that quotes the marker', async () => {
+      const payload = openPR();
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [
+          { id: 7, body: `Quoting clerk: ${LINT_COMMENT_MARKER}`, user: HUMAN_USER },
+          {
+            id: 9,
+            body: `${LINT_COMMENT_MARKER}\nfrom another bot`,
+            user: { login: 'other[bot]', type: 'Bot' },
+          },
+        ]);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain(LINT_COMMENT_MARKER);
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('updates only the comment authored by the bot when a human also quotes the marker', async () => {
+      const payload = openPR();
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [
+          { id: 7, body: `Quoting clerk: ${LINT_COMMENT_MARKER}`, user: HUMAN_USER },
+          botLintComment(8),
+        ]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('marks the lint comment resolved once the note is clean', async () => {
+      const payload = openPR({ body: 'Notes: Fixed a crash for Notification close.\n' });
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [botLintComment(8)]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not lint Notes: none', async () => {
+      const payload = openPR({ body: 'Notes: none\n' });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not lint a bulleted none', async () => {
+      for (const body of ['Notes:\n* none\n', 'Notes: - No notes\n']) {
+        const payload = openPR({ body });
+        noExistingComments();
+        expectStatus(payload, 'success', 'Release notes found');
+
+        await probot.receive({ id: '123', name: 'pull_request', payload });
+        expect(nock.isDone(), body).toBe(true);
+      }
+    });
+
+    it('still lints a bulleted note with a real item next to none', async () => {
+      const payload = openPR({ body: 'Notes:\n* fix crash on close\n* none\n' });
+      noExistingComments();
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('Bullet 1: Use the past tense');
+          expect(body.body).toContain('Notes:\n* Fixed a crash on close.\n* None.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('posts No Release Notes at merge time for a bulleted none', async () => {
+      const payload = {
+        ...openPR({ body: 'Notes:\n* none\n', state: 'closed', merged: true }),
+        action: 'closed',
+      } as unknown as PullRequestClosedEvent;
+
+      expectStatus(payload, 'success', 'Release notes found');
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toEqual(NO_NOTES_BODY);
+          return true;
+        })
+        .reply(201);
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('creates a single lint comment when two deliveries for one PR race', async () => {
+      const payload = openPR();
+      let created: string | undefined;
+
+      // The first delivery sees no comment and creates one; the second must
+      // wait for it, see the created comment and leave it alone.
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(created).toBeUndefined();
+          created = body.body;
+          return true;
+        })
+        .reply(201);
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, () => {
+          expect(created).toBeDefined();
+          return [{ id: 8, body: created, user: BOT_USER }];
+        });
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await Promise.all([
+        probot.receive({ id: '123', name: 'pull_request', payload }),
+        probot.receive({ id: '124', name: 'pull_request', payload }),
+      ]);
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('skips lint for bot authors', async () => {
+      const payload = openPR({ user: { login: 'trop[bot]', type: 'Bot' } });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('skips lint for backports', async () => {
+      const payload = openPR({
+        body: 'Backport of #12345\n\nNotes: fix crash for Notification close\n',
+      });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('forces success with the override label despite findings, without commenting', async () => {
+      const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes check overridden by label');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('forces success with the override label when notes are missing', async () => {
+      const payload = openPR({
+        body: 'Fixes something broken',
+        labels: [{ name: OVERRIDE_LABEL }],
+      });
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes check overridden by label');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('resolves a stale lint comment when the note becomes Notes: none', async () => {
+      const payload = openPR({ body: 'Notes: none\n' });
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [botLintComment(8)]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('resolves a stale lint comment when the override label is added', async () => {
+      const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
+
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .reply(200, [botLintComment(8)]);
+      nock(GH_API)
+        .patch(`/repos/electron/electron/issues/comments/8`, (body: Record<string, string>) => {
+          expect(body.body).toEqual(`${LINT_COMMENT_MARKER}\n${LINT_COMMENT_RESOLVED}`);
+          return true;
+        })
+        .reply(200);
+      expectStatus(payload, 'success', 'Release notes check overridden by label');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('does not lint or override at merge time', async () => {
+      const payload = {
+        ...openPR({ state: 'closed', merged: true, labels: [{ name: OVERRIDE_LABEL }] }),
+        action: 'closed',
+      } as unknown as PullRequestClosedEvent;
+
+      expectStatus(payload, 'success', 'Release notes found');
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('> fix crash for Notification close');
+          return true;
+        })
+        .reply(201);
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
   });
 });
