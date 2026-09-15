@@ -7,12 +7,20 @@ import {
   isNoNotesNote,
   updatePRBodyForNoNotes,
 } from './note-utils';
-import { analyzeNote, createLintCommentBody } from './note-lint';
+import { analyzeNote, createLintCommentBody, exceedsNoteLength } from './note-lint';
+import {
+  createReviewClient,
+  createReviewCommentBody,
+  REVIEW_STATUS_DESCRIPTION,
+  reviewNote,
+  type ReviewClient,
+} from './note-review';
 
 import d from 'debug';
 import {
   LINT_COMMENT_MARKER,
   LINT_COMMENT_RESOLVED,
+  LINTED_BOT_LOGINS,
   OVERRIDE_LABEL,
   SEMANTIC_BUILD_PREFIX,
 } from './constants';
@@ -30,10 +38,13 @@ const setStatus = (
     context.repo({ state, sha: pr.head.sha, description, context: 'release-notes' }),
   );
 
-// Style findings are skipped for bot-authored PRs and for trop backports,
-// which copy the original PR's note verbatim.
+// Style findings are skipped for bot-authored PRs (except those in
+// LINTED_BOT_LOGINS) and for trop backports, which copy the original PR's note
+// verbatim.
 const shouldLintNote = (pr: PullRequest, note: string) =>
-  pr.user.type !== 'Bot' && !/Backport of #/.test(pr.body ?? '') && !isNoNotesNote(note);
+  (pr.user.type !== 'Bot' || LINTED_BOT_LOGINS.includes(pr.user.login)) &&
+  !/Backport of #/.test(pr.body ?? '') &&
+  !isNoNotesNote(note);
 
 // Login of the app's own bot user, e.g. `release-clerk[bot]`. Resolved once
 // from the app's slug; the constant is the fallback when that lookup is not
@@ -57,41 +68,37 @@ const getBotLogin = (app: Probot) => {
   return botLogin;
 };
 
-// Posts or updates the single clerk-owned lint comment on a PR. The comment is
-// kept (not deleted) once the note is clean so the author's edit history stays
-// visible and a later regression edits the same comment instead of spawning a
-// new one. Only a comment authored by clerk's own bot user counts: a human
-// comment that quotes the marker must never be overwritten.
-//
-// Upserts are serialised per PR: two webhook deliveries for the same PR that
-// arrive together (a redelivery, or a quick double edit) would otherwise both
-// list the comments before either has created one, and each would then create
-// its own. The second call waits for the first and so sees its comment.
-const pendingUpserts = new Map<string, Promise<void>>();
-const upsertLintComment = (
-  context: Context<'pull_request'>,
-  pr: PullRequest,
-  body: string | null,
-  botLogin: string,
-) => {
-  const { owner, repo } = context.repo();
-  const key = `${owner}/${repo}#${pr.number}`;
-  const previous = pendingUpserts.get(key) ?? Promise.resolve();
-  const run = previous.then(() => doUpsertLintComment(context, pr, body, botLogin));
+// Feedback for one PR is serialised: two webhook deliveries for the same PR
+// that arrive together (a redelivery, a quick double edit, or a push while an
+// earlier event still waits on the Claude review) would otherwise interleave
+// their reads and writes. Both could list the comments before either has
+// created one and each would create its own; or the newer push's failing
+// comment could be posted first and then marked resolved by the older, slower
+// event. The second call waits for the first to finish entirely.
+const pendingFeedback = new Map<string, Promise<void>>();
+const serializePerPR = <T>(key: string, task: () => Promise<T>): Promise<T> => {
+  const previous = pendingFeedback.get(key) ?? Promise.resolve();
+  const run = previous.then(task);
   // Track settlement only (the caller handles rejections) and drop the entry
-  // once this is the last queued upsert, so the map does not grow per PR.
+  // once this is the last queued task, so the map does not grow per PR.
   const settled: Promise<void> = run.then(
     () => undefined,
     () => undefined,
   );
   const tracked: Promise<void> = settled.then(() => {
-    if (pendingUpserts.get(key) === tracked) pendingUpserts.delete(key);
+    if (pendingFeedback.get(key) === tracked) pendingFeedback.delete(key);
   });
-  pendingUpserts.set(key, tracked);
+  pendingFeedback.set(key, tracked);
   return run;
 };
 
-const doUpsertLintComment = async (
+// Posts or updates the single clerk-owned lint comment on a PR. The comment is
+// kept (not deleted) once the note is clean so the author's edit history stays
+// visible and a later regression edits the same comment instead of spawning a
+// new one. Only a comment authored by clerk's own bot user counts: a human
+// comment that quotes the marker must never be overwritten. Callers run inside
+// serializePerPR, which is what keeps the list-then-create from racing.
+const upsertLintComment = async (
   context: Context<'pull_request'>,
   pr: PullRequest,
   body: string | null,
@@ -121,11 +128,33 @@ const doUpsertLintComment = async (
   }
 };
 
+// The Claude review can take minutes. A push or description edit in that time
+// makes the event's snapshot of the PR stale, and the event for that change
+// posts its own result; writing from the stale snapshot could resolve the newer
+// event's failing comment or set a status for the wrong head. A PR closed or
+// merged in that time gets no write either.
+const isPRUnchanged = async (context: Context<'pull_request'>, pr: PullRequest) => {
+  const { data } = await context.octokit.rest.pulls.get(context.repo({ pull_number: pr.number }));
+  return (
+    data.state === 'open' &&
+    !data.merged &&
+    data.head.sha === pr.head.sha &&
+    (data.body ?? '') === (pr.body ?? '')
+  );
+};
+
+// The newest event seen for each PR. An event queued behind a slow review
+// skips its own review once a newer event for the same PR has arrived; the
+// newer event does the work.
+const latestEvent = new Map<string, number>();
+
 const submitFeedbackForPR = async (
   context: Context<'pull_request'>,
   pr: Context<'pull_request'>['payload']['pull_request'],
+  reviewClient: ReviewClient | null,
   botLogin: string,
   shouldComment = false,
+  isSuperseded = () => false,
 ) => {
   const releaseNotes = findNoteInPRBody(pr.body);
   const github = context.octokit;
@@ -192,9 +221,50 @@ const submitFeedbackForPR = async (
     if (!shouldComment && shouldLintNote(pr, releaseNotes)) {
       const result = analyzeNote(releaseNotes, { labels, title: pr.title });
       if (result.findings.length > 0) {
+        // A note over the length limit has no mechanical fix, so ask Claude
+        // for a shorter one to show with the findings. The check still fails.
+        if (isSuperseded()) {
+          debug(`A newer event for this PR is queued: leaving the write to it.`);
+          return;
+        }
+        const review =
+          reviewClient && exceedsNoteLength(result.fixed ?? releaseNotes)
+            ? await reviewNote(
+                { note: result.fixed ?? releaseNotes, title: pr.title, labels },
+                reviewClient,
+              )
+            : null;
+        if (review && !(await isPRUnchanged(context, pr))) {
+          debug(`PR changed during the Claude review: leaving the write to the newer event.`);
+          return;
+        }
+        const rewrite =
+          review?.verdict === 'suggest'
+            ? { suggestion: review.suggestion ?? '', reasons: review.reasons }
+            : undefined;
         debug(`Release Notes need style fixes: posting failed check.`);
-        await upsertLintComment(context, pr, createLintCommentBody(result), botLogin);
+        await upsertLintComment(context, pr, createLintCommentBody(result, rewrite), botLogin);
         await setStatus(context, pr, 'failure', 'Release notes need style fixes (see comment)');
+        return;
+      }
+
+      // The style rules pass; optionally ask Claude whether the note tells app
+      // developers what changed. Advisory only: the status stays green.
+      if (isSuperseded()) {
+        debug(`A newer event for this PR is queued: leaving the write to it.`);
+        return;
+      }
+      const review = reviewClient
+        ? await reviewNote({ note: releaseNotes, title: pr.title, labels }, reviewClient)
+        : null;
+      if (reviewClient && !(await isPRUnchanged(context, pr))) {
+        debug(`PR changed during the Claude review: leaving the write to the newer event.`);
+        return;
+      }
+      if (review && review.verdict !== 'ok') {
+        debug(`Claude suggested a release note rewrite: posting advisory comment.`);
+        await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
+        await setStatus(context, pr, 'success', REVIEW_STATUS_DESCRIPTION);
         return;
       }
       await upsertLintComment(context, pr, null, botLogin);
@@ -219,7 +289,15 @@ const submitFeedbackForPR = async (
   }
 };
 
-export const probotRunner = (app: Probot) => {
+// Resolves once every queued feedback task has finished. Feedback for open PRs
+// runs after the webhook handler returns (see below), so tests await this.
+export const settleFeedback = async () => {
+  while (pendingFeedback.size > 0) await Promise.all(pendingFeedback.values());
+};
+
+// The Claude client is injected so tests can substitute a mock; the default
+// runner builds the real one once, at load, only when ANTHROPIC_API_KEY is set.
+export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: Probot) => {
   app.on('pull_request', async (context) => {
     const pr = context.payload.pull_request;
     const repo = context.payload.repository.full_name;
@@ -227,13 +305,36 @@ export const probotRunner = (app: Probot) => {
 
     if (context.payload.action === 'closed' && pr.merged) {
       debug(`Checking release notes comment on PR ${repo}#${pr.number}`);
-      await submitFeedbackForPR(context, pr, botLogin, true);
+      await submitFeedbackForPR(context, pr, reviewClient, botLogin, true);
     } else if (!pr.merged && pr.state === 'open') {
-      // Only submit feedback for PRs that aren't merged and are open
+      // Only submit feedback for PRs that aren't merged and are open. The
+      // Claude review can take minutes, far longer than GitHub waits for a
+      // webhook response, so the feedback runs after the handler returns and
+      // the delivery is acknowledged straight away.
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      await submitFeedbackForPR(context, pr, botLogin);
+      const key = `${repo}#${pr.number}`;
+      const seq = (latestEvent.get(key) ?? 0) + 1;
+      latestEvent.set(key, seq);
+      serializePerPR(key, () =>
+        submitFeedbackForPR(
+          context,
+          pr,
+          reviewClient,
+          botLogin,
+          false,
+          () => latestEvent.get(key) !== seq,
+        ),
+      )
+        .catch((err) => {
+          context.log.error({ err }, `Release notes feedback failed for ${repo}#${pr.number}`);
+        })
+        .finally(() => {
+          if (latestEvent.get(key) === seq) latestEvent.delete(key);
+        });
     }
   });
 };
+
+export const probotRunner = createProbotRunner(createReviewClient());
 
 export default probotRunner;
