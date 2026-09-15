@@ -128,8 +128,9 @@ arrives while four are running skips the review. If the PR is pushed to or
 its description edited while the review is running, that result is discarded
 and the event for the newer change posts its own. Only the note, the PR title
 (without its `fix:`-style prefix) and the labels are sent, never the PR body or
-diff. Complete verdicts are cached in memory by note, title and labels so pushes
-that do not touch the description do not call the API again.
+diff. Complete verdicts are cached in memory by note, title and `semver/*` labels
+(the only labels the review looks at), so pushes that do not touch the
+description, and label changes such as `target/*`, do not call the API again.
 
 To enable it, set `ANTHROPIC_API_KEY` on the Heroku app; without it this step
 is skipped. The key's organization must allow Claude Fable 5.1 (it requires
