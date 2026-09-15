@@ -90,7 +90,8 @@ A rewrite keeps what app developers need: the kind of change, any instruction
 they must act on, every condition that limits who is affected (platform,
 options, triggers), public API and tool names, and the symptom users see. It
 drops how the fix works, internal names and causes, and aims for about 100
-characters.
+characters. Bullets are only used for separate changes: a change and what apps
+must do about it stay in one sentence.
 
 How a review runs:
 
