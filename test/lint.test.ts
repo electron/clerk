@@ -264,17 +264,41 @@ describe('lintNote', () => {
     expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
   });
 
-  it('keeps links, images and mentions in comment prose inert', () => {
+  it('keeps links, images, mentions and references in comment prose inert', () => {
+    const Z = String.fromCharCode(0x200b);
     expect(
       escapeProse('See [docs](https://evil.example/x) and ![p](https://t.example/p.png).'),
-    ).toEqual('See \\[docs\\](`https://evil.example/x`) and !\\[p\\](`https://t.example/p.png`).');
-    expect(escapeProse('Ask @someone or @electron/wg-releases, not a@b.com.')).toEqual(
-      'Ask `@someone` or `@electron/wg-releases`, not a@b.com.',
+    ).toEqual(
+      `See \\[docs\\](https:${Z}//evil.example/x) and !\\[p\\](https:${Z}//t.example/p.png).`,
     );
-    expect(escapeProse('Visit www.evil.example, or `https://ok.example` in code.')).toEqual(
-      'Visit `www.evil.example`, or `https://ok.example` in code.',
+    expect(escapeProse('Ask @someone, see #123 and www.evil.example.')).toEqual(
+      `Ask @${Z}someone, see #${Z}123 and www${Z}.evil.example.`,
+    );
+    expect(escapeProse('See https://x.example/@victim and www.@user')).toEqual(
+      `See https:${Z}//x.example/@${Z}victim and www${Z}.@${Z}user`,
+    );
+    expect(escapeProse('see _www.evil.example and _https://evil.example/x')).toEqual(
+      `see _www${Z}.evil.example and _https:${Z}//evil.example/x`,
+    );
+    // Shown as literal text: `&` is escaped, so the entities never decode.
+    expect(escapeProse('Ask &#64;someone or &commat;x')).toEqual(
+      `Ask &amp;#${Z}64;someone or &amp;commat;x`,
     );
     expect(escapeProse('<img src=x>')).toEqual('&lt;img src=x&gt;');
+    expect(escapeProse('Use `a[0] && b` <here> & more.')).toEqual(
+      'Use `a[0] && b` &lt;here&gt; &amp; more.',
+    );
+  });
+
+  it('does not let stray backticks hide prose from escaping', () => {
+    const Z = String.fromCharCode(0x200b);
+    expect(escapeProse('a ` b @someone www.x.example')).toEqual(
+      `a &#96; b @${Z}someone www${Z}.x.example`,
+    );
+    expect(escapeProse('a ` [x](y) <b>')).toEqual('a &#96; \\[x\\](y) &lt;b&gt;');
+    expect(escapeProse('``a`` [x](y)')).toEqual('&#96;&#96;a&#96;&#96; \\[x\\](y)');
+    expect(escapeProse('\\` [x](y) `')).toEqual('&#96; \\[x\\](y) &#96;');
+    expect(escapeProse('`a` ` [x](y)')).toEqual('`a` &#96; \\[x\\](y)');
   });
 
   it('leaves PascalCase product names alone', () => {

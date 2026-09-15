@@ -497,22 +497,44 @@ export const lintNote = (note: string, ctx: LintContext): LintFinding[] =>
 
 // Escapes angle brackets outside backticks so GitHub does not swallow a raw
 // `<webview>` as HTML; inside inline code they render literally.
+// Backticks GitHub would not treat as code-span delimiters the way CODE_SPAN
+// does (escaped ones, runs of two or more, and a final unpaired one) are set
+// aside and later written as `&#96;`, which GitHub never pairs either. After
+// this, clerk and GitHub agree on what is code.
+const NEUTRAL_BACKTICK = String.fromCharCode(0);
+const normalizeBackticks = (text: string) => {
+  let out = text
+    .replaceAll(NEUTRAL_BACKTICK, '')
+    .replace(/\\`/g, NEUTRAL_BACKTICK)
+    .replace(/`{2,}/g, (run) => NEUTRAL_BACKTICK.repeat(run.length));
+  if ((out.match(/`/g)?.length ?? 0) % 2 === 1) {
+    const last = out.lastIndexOf('`');
+    out = `${out.slice(0, last)}${NEUTRAL_BACKTICK}${out.slice(last + 1)}`;
+  }
+  return out;
+};
+
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+
 // Prose in clerk's comments can quote the PR note or Claude's reasons, both of
-// which a fork PR controls. Outside code spans, HTML is escaped, markdown links
-// and images are broken up, bare URLs are shown as code so they are not
-// clickable, and @mentions are shown as code so they notify nobody.
+// which a fork PR controls. Outside code spans, `&` (so entities cannot spell
+// anything), HTML and markdown link brackets are escaped. Everywhere, autolinks,
+// @mentions and issue references are broken with a zero-width space, so nothing
+// in the comment links anywhere, loads anything or notifies anyone.
 export const escapeProse = (text: string) =>
-  mapOutsideCode(text, (prose) =>
+  mapOutsideCode(normalizeBackticks(text), (prose) =>
     prose
+      .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')
-      .replace(/[[\]]/g, '\\$&')
-      .replace(
-        /\b(?:[a-z][\w+.-]{0,31}:\/\/|www\.)[^\s`]{0,2047}[^\s`.,;:!?)\]'"]/gi,
-        (url) => `\`${url}\``,
-      )
-      .replace(/(?<![\w`])@[\w-]{1,39}(?:\/[\w.-]{1,100})?/g, (mention) => `\`${mention}\``),
-  );
+      .replace(/[[\]]/g, '\\$&'),
+  )
+    .replaceAll(NEUTRAL_BACKTICK, '&#96;')
+    .replace(/:\/\//g, `:${ZERO_WIDTH_SPACE}//`)
+    .replace(/(www)\./gi, `$1${ZERO_WIDTH_SPACE}.`)
+    .replace(/@(?=[\w-])/g, `@${ZERO_WIDTH_SPACE}`)
+    // Not after `&`, which would break the entities written above.
+    .replace(/(?<!&)#(?=\d)/g, `#${ZERO_WIDTH_SPACE}`);
 
 // A shorter rewrite from the Claude review, shown in place of the mechanical
 // fix when the note is over the length limit.
