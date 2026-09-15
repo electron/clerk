@@ -903,11 +903,11 @@ export const createReviewCommentBody = ({ verdict, suggestion, reasons }: Review
       LINT_COMMENT_MARKER,
       '**Release note needs more detail (advisory)**',
       '',
-      `The \`Notes:\` line in this PR passes the [style rules](${STYLE_GUIDE_URL}). Claude reviewed it for how it reads to app developers and thinks it needs more detail; the check passes either way:`,
+      `The \`Notes:\` line in this PR passes the [style rules](${STYLE_GUIDE_URL}). Claude reviewed it for how it reads to app developers and thinks it needs more detail:`,
       '',
       ...bullets,
       '',
-      'This comment was generated automatically and may be wrong. It updates as the PR description is edited.',
+      'This question was generated automatically, so use your best judgment. This comment will update as the PR description is edited.',
     ].join('\n');
   }
 
@@ -915,7 +915,7 @@ export const createReviewCommentBody = ({ verdict, suggestion, reasons }: Review
     LINT_COMMENT_MARKER,
     '**Suggested release note (advisory)**',
     '',
-    `The \`Notes:\` line in this PR passes the [style rules](${STYLE_GUIDE_URL}). Claude reviewed it for how it reads to app developers and suggests this rewrite; the check passes either way, so take it or leave it:`,
+    `The \`Notes:\` line in this PR passes the [style rules](${STYLE_GUIDE_URL}). Claude reviewed it for how it reads to app developers and suggests this rewrite:`,
     '',
     '```',
     formatNotesBlock(rewrite),
@@ -923,6 +923,6 @@ export const createReviewCommentBody = ({ verdict, suggestion, reasons }: Review
     '',
     ...bullets,
     ...(bullets.length > 0 ? [''] : []),
-    'This suggestion was generated automatically and may be wrong; keep your own facts. This comment updates as the PR description is edited.',
+    'This suggestion was generated automatically, so use your best judgment. This comment will update as the PR description is edited.',
   ].join('\n');
 };
