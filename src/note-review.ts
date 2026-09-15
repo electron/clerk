@@ -237,6 +237,12 @@ export const JUDGE_SCHEMA = {
       description:
         'When no candidate is acceptable: your corrected version of the closest candidate that meets every rule, using only facts from the note and title (a rewrite, or "[ask] " followed by the question). Otherwise an empty string.',
     },
+    fix_kind: {
+      type: 'string',
+      enum: CHANGE_KINDS,
+      description:
+        'For a rewrite in fix: the kind of change your rewrite describes. Otherwise the kind of change the original note describes.',
+    },
     fix_reasons: {
       type: 'array',
       items: { type: 'string' },
@@ -249,7 +255,7 @@ export const JUDGE_SCHEMA = {
         'For a note within the limit: whether the best candidate addresses a real problem in the original. Always true for a note over the limit.',
     },
   },
-  required: ['assessments', 'best', 'closest', 'fix', 'fix_reasons', 'worth_posting'],
+  required: ['assessments', 'best', 'closest', 'fix', 'fix_kind', 'fix_reasons', 'worth_posting'],
   additionalProperties: false,
 } as const;
 
@@ -258,7 +264,7 @@ export const JUDGE_SYSTEM_PROMPT = `You check proposed rewrites of a release not
 A rewrite is acceptable only if all of these hold:
 1. Every statement is supported by the original note or the PR title. Nothing is added, generalized or made more certain (for example a dropped "potential", or a crash in one situation presented as a crash in general).
 2. It keeps every condition that limits who is affected: platform, options or fuses that must be set, process or window type, the trigger, "same-process", "intermittent".
-3. It keeps the public API, event, option, CLI flag, fuse and tool names from the note. Each candidate lists the backticked names it leaves out; each of those is a problem unless it is internal, or an exact group name that developers would recognise replaces it, or it is mentioned only in passing and keeping it could not fit even with bullets. A claim that one name covers another is not a reason unless the note says so. Referring again to an option the candidate already names in full, by its value alone, keeps the name; but a shortened or rewritten form of a name (\`module.builtinModules\` for \`require('module').builtinModules\`) counts as leaving it out even when the reasons call the two equivalent.
+3. It keeps the public API, event, option, CLI flag, fuse and tool names from the note. Each candidate lists the backticked names and bug IDs (CVE or Chromium bug numbers) it leaves out; each of those is a problem unless it is internal, or an exact group name that developers would recognise replaces it, or it is mentioned only in passing and keeping it could not fit even with bullets. A claim that one name covers another is not a reason unless the note says so. Referring again to an option the candidate already names in full, by its value alone, keeps the name; but a shortened or rewritten form of a name (\`module.builtinModules\` for \`require('module').builtinModules\`) counts as leaving it out even when the reasons call the two equivalent.
 4. It keeps the symptom users see and any behaviour change or instruction apps must act on ("use X instead").
 5. It describes the same kind of change as the original (a fix stays a fix, a behaviour change stays a behaviour change).
 6. It says the right thing: a fix describes what was broken, not the correct behaviour; comparisons keep their direction ("aligning with X" is not "unlike X"); technical terms are not swapped for similar-sounding ones; names keep the author's casing and form ("Clone" is not \`clone()\`), and a rewrite must not replace the note's API name with a different one from the title (when the title writes a different API as code, the right response is an [ask], which is acceptable even though the title names an API); an instruction keeps what it achieves ("set X to get Y" is not "set X to opt out").
@@ -465,9 +471,10 @@ export const findReviewProblems = (review: InterpretedReview, input: ReviewInput
   const lint = analyzeNote(result.suggestion ?? '', { labels: input.labels, title: input.title });
   problems.push(...lint.findings.map((finding) => `Style check: ${finding.message}`));
   const reasons = result.reasons.join(' ');
-  const silent = droppedNames(input.note, result.suggestion ?? '').filter(
-    (name) => !reasons.includes(name),
-  );
+  const silent = [
+    ...droppedNames(input.note, result.suggestion ?? ''),
+    ...droppedIds(input.note, result.suggestion ?? ''),
+  ].filter((name) => !mentionsToken(reasons, name));
   if (silent.length > 0) {
     problems.push(
       `It drops ${silent.map((n) => `\`${n}\``).join(', ')} without saying so in the reasons; keep ${silent.length > 1 ? 'them' : 'it'}, or name ${silent.length > 1 ? 'them' : 'it'} in a reason explaining why an app developer does not need ${silent.length > 1 ? 'them' : 'it'}.`,
@@ -482,8 +489,10 @@ export interface JudgeDecision {
   closest: number;
   worthPosting: boolean;
   problems: string[][];
-  // The judge's own corrected version when nothing was acceptable.
+  // The judge's own corrected version when nothing was acceptable, and the
+  // kind of change it describes.
   fix: string;
+  fixKind: string | null;
   fixReasons: string[];
 }
 
@@ -502,6 +511,7 @@ export const interpretJudgeResponse = (
     worth_posting: worthPosting,
     fix,
     fix_reasons: fixReasons,
+    fix_kind: fixKind,
   } = parsed;
   if (!Array.isArray(assessments) || typeof best !== 'number') return null;
 
@@ -525,6 +535,10 @@ export const interpretJudgeResponse = (
     worthPosting: worthPosting !== false,
     problems,
     fix: typeof fix === 'string' ? fix.trim() : '',
+    fixKind:
+      typeof fixKind === 'string' && (CHANGE_KINDS as readonly string[]).includes(fixKind)
+        ? fixKind
+        : null,
     fixReasons: Array.isArray(fixReasons)
       ? fixReasons.filter((r): r is string => typeof r === 'string' && r.trim() !== '')
       : [],
@@ -596,6 +610,33 @@ interface Candidate {
 const CODE_SPAN = /`([^`]+)`/g;
 
 // Backticked names in the note that the rewrite no longer mentions.
+// CVE and bug IDs in a note, and the ones a rewrite leaves out. A bare number
+// only counts as a bug ID on a backport line ("Backported fix for 1234567."),
+// so ordinary numbers such as a 300000 ms timeout are not IDs.
+const BUG_ID = /\bCVE-\d{4}-\d{4,}\b|\b(?:b|crbug(?:\.com)?)\/\d{5,}\b/gi;
+const BARE_BUG_ID = /(?<![\w.-])\d{6,}(?![\w-]|\.\d)/g;
+const idsIn = (text: string) =>
+  unescapeNote(text)
+    .split('\n')
+    .flatMap((line) => [
+      ...[...line.matchAll(BUG_ID)].map((m) => m[0]),
+      ...(hasBackportLine(line) ? [...line.matchAll(BARE_BUG_ID)].map((m) => m[0]) : []),
+    ]);
+export const droppedIds = (note: string, rewrite: string) => {
+  const kept = new Set(
+    [...unescapeNote(rewrite).matchAll(BUG_ID), ...unescapeNote(rewrite).matchAll(BARE_BUG_ID)].map(
+      (m) => m[0].toUpperCase(),
+    ),
+  );
+  return [...new Set(idsIn(note))].filter((id) => !kept.has(id.toUpperCase()));
+};
+
+// True when the text names `token` as a whole token, not inside a longer one.
+const mentionsToken = (text: string, token: string) => {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\w$-])${escaped}(?![\\w$-])`, 'i').test(text);
+};
+
 export const droppedNames = (note: string, rewrite: string) => {
   const kept = unescapeNote(rewrite);
   const keptSpans = new Set([...kept.matchAll(CODE_SPAN)].map((m) => m[1]));
@@ -611,12 +652,15 @@ export const droppedNames = (note: string, rewrite: string) => {
 // How a candidate is shown to the judge, and what makes two candidates the same.
 const candidateText = ({ result }: InterpretedReview, note: string) => {
   if (result.verdict === 'ask') return `[ask] ${result.reasons.join(' ')}`;
-  const dropped = droppedNames(note, result.suggestion ?? '');
+  const dropped = [
+    ...droppedNames(note, result.suggestion ?? '').map((n) => `\`${n}\``),
+    ...droppedIds(note, result.suggestion ?? ''),
+  ];
   return [
     result.suggestion ?? '',
     '',
     `Reasons: ${result.reasons.join(' ') || '(none)'}`,
-    `Backticked names from the note it leaves out: ${dropped.map((n) => `\`${n}\``).join(', ') || '(none)'}`,
+    `Backticked names and bug IDs from the note it leaves out: ${dropped.join(', ') || '(none)'}`,
   ].join('\n');
 };
 const candidateKey = ({ result }: InterpretedReview) =>
@@ -647,7 +691,9 @@ const fixCandidate = (
     result,
     complete: true,
     noteKind: kind,
-    suggestionKind: kind,
+    // The judge reports the kind its rewrite describes, so the same kind check
+    // as for the review model's own rewrites applies.
+    suggestionKind: result.verdict === 'suggest' ? (decision.fixKind ?? kind) : kind,
   };
   // If this candidate is revised later, the conversation must show the fix as
   // the answer being corrected, not the base candidate's answer.
@@ -656,7 +702,7 @@ const fixCandidate = (
     verdict: result.verdict,
     suggestion: result.suggestion ?? '',
     reasons: result.reasons,
-    suggestion_kind: kind,
+    suggestion_kind: review.suggestionKind,
   };
   return {
     message: {

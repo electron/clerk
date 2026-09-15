@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeNote,
   createLintCommentBody,
+  escapeProse,
   exceedsNoteLength,
   isSecurityBackportNote,
   lintNote,
@@ -263,6 +264,55 @@ describe('lintNote', () => {
     expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
   });
 
+  it('keeps links, images, mentions and references in comment prose inert', () => {
+    const Z = String.fromCharCode(0x200b);
+    expect(
+      escapeProse('See [docs](https://evil.example/x) and ![p](https://t.example/p.png).'),
+    ).toEqual(
+      `See \\[docs\\](https:${Z}//evil.example/x) and !\\[p\\](https:${Z}//t.example/p.png).`,
+    );
+    expect(escapeProse('Ask @someone, see #123 and www.evil.example.')).toEqual(
+      `Ask @${Z}someone, see #${Z}123 and www${Z}.evil.example.`,
+    );
+    expect(escapeProse('Mail someone@evil.example.')).toEqual(`Mail someone@${Z}evil.example.`);
+    expect(escapeProse('See https://x.example/@victim and www.@user')).toEqual(
+      `See https:${Z}//x.example/@${Z}victim and www${Z}.@${Z}user`,
+    );
+    expect(escapeProse('see _www.evil.example and _https://evil.example/x')).toEqual(
+      `see _www${Z}.evil.example and _https:${Z}//evil.example/x`,
+    );
+    // Shown as literal text: `&` is escaped, so the entities never decode.
+    expect(escapeProse('Ask &#64;someone or &commat;x')).toEqual(
+      `Ask &amp;#${Z}64;someone or &amp;commat;x`,
+    );
+    expect(escapeProse('<img src=x>')).toEqual('&lt;img src=x&gt;');
+    // Code spans are not linked or mentioned by GitHub, so they are left as written.
+    expect(escapeProse('Run `npm i @electron/get` or see `https://x.example/#1`.')).toEqual(
+      'Run `npm i @electron/get` or see `https://x.example/#1`.',
+    );
+    expect(escapeProse('Use `a[0] && b` <here> & more.')).toEqual(
+      'Use `a[0] && b` &lt;here&gt; &amp; more.',
+    );
+  });
+
+  it('does not let stray backticks hide prose from escaping', () => {
+    const Z = String.fromCharCode(0x200b);
+    expect(escapeProse('a ` b @someone www.x.example')).toEqual(
+      `a &#96; b @${Z}someone www${Z}.x.example`,
+    );
+    expect(escapeProse('a ` [x](y) <b>')).toEqual('a &#96; \\[x\\](y) &lt;b&gt;');
+    expect(escapeProse('``a`` [x](y)')).toEqual('&#96;&#96;a&#96;&#96; \\[x\\](y)');
+    expect(escapeProse('\\` [x](y) `')).toEqual('&#96; \\[x\\](y) &#96;');
+    expect(escapeProse('`a` ` [x](y)')).toEqual('`a` &#96; \\[x\\](y)');
+    // Backticks are balanced per line, since GitHub never pairs them across blocks.
+    expect(escapeProse('a `b\n\n- c` [x](y) <b>')).toEqual(
+      'a &#96;b\n\n- c&#96; \\[x\\](y) &lt;b&gt;',
+    );
+    expect(escapeProse('see //evil.example/x and (//evil.example)')).toEqual(
+      `see /${Z}/evil.example/x and (/${Z}/evil.example)`,
+    );
+  });
+
   it('leaves PascalCase product names alone', () => {
     expect(rules('Fixed sharing links to WhatsApp, OneDrive and PowerPoint.')).toEqual([]);
   });
@@ -292,6 +342,11 @@ describe('lintNote', () => {
     ].join('\n');
     expect(rules(note)).toEqual([]);
     expect(rules('* Removed `foo()`.\n* Enable `bar` instead.')).toEqual([]);
+    expect(rules('* Removed `foo()`.\n* Enable the sandbox flag to prevent this.')).toEqual([]);
+    expect(rules('* Removed `foo()`.\n* Uses the new engine instead of polling.')).toEqual([
+      'past-tense',
+    ]);
+    expect(rules('* Removed `foo()`.\n* Enable the new tray.')).toEqual(['past-tense']);
     expect(rules('* Use `foo` instead of `bar`.\n* Fixed a crash.')).toEqual(['past-tense']);
     expect(rules('Use `foo` instead of `bar`.')).toEqual(['past-tense']);
   });
