@@ -88,7 +88,8 @@ describe('buildReviewRequest', () => {
     const request = buildReviewRequest(input);
     expect(request.messages).toHaveLength(1);
     const content = request.messages[0].content as string;
-    expect(content).toContain('PR labels: semver/patch, target/38-x-y');
+    expect(content).toContain('PR labels: semver/patch');
+    expect(content).not.toContain('target/38-x-y');
     expect(content).toContain('<pr_title>\nUAF in TrayIconCocoa\n</pr_title>');
     expect(content).toContain('<release_note>\nFixed a UAF with the tray.\n</release_note>');
     expect(content).not.toContain('semver/major');
@@ -452,6 +453,15 @@ describe('reviewNote', () => {
     expect(create).toHaveBeenCalledTimes(4);
   });
 
+  it('reuses a review when only non-semver labels change', async () => {
+    const { client, calls } = routedClient([ok]);
+    await reviewNote(input, client);
+    await reviewNote({ ...input, labels: [...input.labels, 'merged/38-x-y', 'new-pr'] }, client);
+    expect(calls(REVIEW_MODEL)).toHaveLength(REVIEW_CANDIDATES);
+    await reviewNote({ ...input, labels: ['semver/minor'] }, client);
+    expect(calls(REVIEW_MODEL)).toHaveLength(2 * REVIEW_CANDIDATES);
+  });
+
   it('returns ok without judging when no candidate finds anything wrong', async () => {
     const { client, calls } = routedClient([ok]);
     await expect(reviewNote(input, client)).resolves.toEqual({ verdict: 'ok', reasons: [] });
@@ -677,6 +687,12 @@ describe('reviewNote', () => {
   it('ignores label order in the cache key', () => {
     expect(reviewCacheKey(input)).toEqual(
       reviewCacheKey({ ...input, labels: [...input.labels].reverse() }),
+    );
+    expect(reviewCacheKey(input)).toEqual(
+      reviewCacheKey({ ...input, labels: ['semver/patch', 'target/39-x-y', 'merged/38-x-y'] }),
+    );
+    expect(reviewCacheKey(input)).not.toEqual(
+      reviewCacheKey({ ...input, labels: ['semver/major', 'target/38-x-y'] }),
     );
     expect(reviewCacheKey(input)).not.toEqual(reviewCacheKey({ ...input, title: 'other' }));
   });

@@ -279,8 +279,14 @@ The original note, the PR title and the candidates are provided as data inside <
 const neutralizeDelimiters = (text: string) =>
   text.replace(/<\/?\s*(pr_title|release_note|candidate)\b[^>]*>/gi, '');
 
+// Only the semver labels change what a review checks. Other labels (`target/*`,
+// `merged/*`, `new-pr`, ...) come and go as a PR moves along, so they are left
+// out of the request and the cache key; a label change alone reuses the review.
+export const reviewLabels = (labels: string[]) =>
+  labels.filter((label) => label.startsWith('semver/')).sort();
+
 const describePR = (input: ReviewInput) => {
-  const labels = [...input.labels].sort();
+  const labels = reviewLabels(input.labels);
   const type = /^(\w+)(?:\([^)]*\))?!?:\s/.exec(input.title)?.[1];
   return [
     `PR labels: ${labels.length > 0 ? labels.join(', ') : '(none)'}`,
@@ -555,11 +561,12 @@ const withFeedback = (
 
 export const reviewCacheKey = ({ note, title, labels }: ReviewInput) =>
   createHash('sha256')
-    .update(JSON.stringify([note, title, [...labels].sort()]))
+    .update(JSON.stringify([note, title, reviewLabels(labels)]))
     .digest('hex');
 
-// Keyed by note + title + labels so `synchronize` events with an unchanged
-// description do not call the API again. Bounded and insertion-ordered: the
+// Keyed by note + title + semver labels so `synchronize` events with an
+// unchanged description, and label changes that do not affect the review, do
+// not call the API again. Bounded and insertion-ordered: the
 // oldest entry is evicted first.
 const cache = new Map<string, ReviewResult>();
 
