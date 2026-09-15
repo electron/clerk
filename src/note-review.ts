@@ -21,6 +21,7 @@ import {
   escapeProse,
   exceedsNoteLength,
   formatNotesBlock,
+  hasBackportLine,
   isSecurityBackportNote,
   MAX_NOTE_LENGTH,
   stripFences,
@@ -286,6 +287,11 @@ const describePR = (input: ReviewInput) => {
     ...(type ? [`PR type: ${neutralizeDelimiters(type)}`] : []),
     ...(labels.includes(BREAKING_LABEL)
       ? [`This PR is labelled ${BREAKING_LABEL}: the note must say what breaks for apps.`]
+      : []),
+    ...(hasBackportLine(input.note) && !isSecurityBackportNote(input.note)
+      ? [
+          `Lines starting with "Backported" follow Electron's convention for backported fixes and have no length limit; only a clear grammar error or typo in them is a problem.`,
+        ]
       : []),
     ...(isSecurityBackportNote(input.note)
       ? [
@@ -614,27 +620,49 @@ const candidateText = ({ result }: InterpretedReview, note: string) => {
   ].join('\n');
 };
 const candidateKey = ({ result }: InterpretedReview) =>
-  result.verdict === 'ask' ? 'ask' : `suggest:${result.suggestion}`;
+  result.verdict === 'ask' ? `ask:${result.reasons.join('\n')}` : `suggest:${result.suggestion}`;
 
-// Wraps the judge's own corrected version as a candidate. It keeps the kind of
+const ASK_MARKER = /^\s*\[\s*ask\s*\]\s*/i;
+
+// Wraps the judge's own corrected version as a candidate, or returns null when
+// it is an empty question. It keeps the kind of
 // change of the candidate it corrects, and goes through the same rule checks.
-const fixCandidate = (decision: JudgeDecision, base: Candidate, input: ReviewInput): Candidate => {
+const fixCandidate = (
+  decision: JudgeDecision,
+  base: Candidate,
+  input: ReviewInput,
+): Candidate | null => {
   const kind = base.review.noteKind;
-  const result: ReviewResult = decision.fix.startsWith('[ask]')
-    ? { verdict: 'ask', reasons: [decision.fix.slice('[ask]'.length).trim()] }
-    : {
-        verdict: 'suggest',
-        suggestion: decision.fix,
-        reasons: decision.fixReasons.filter((r) => !UNHELPFUL_REASON.test(r)).slice(0, 3),
-      };
+  const question = ASK_MARKER.test(decision.fix) ? decision.fix.replace(ASK_MARKER, '') : null;
+  if (question === '') return null;
+  const result: ReviewResult =
+    question !== null
+      ? { verdict: 'ask', reasons: [question] }
+      : {
+          verdict: 'suggest',
+          suggestion: decision.fix,
+          reasons: decision.fixReasons.filter((r) => !UNHELPFUL_REASON.test(r)).slice(0, 3),
+        };
   const review: InterpretedReview = {
     result,
     complete: true,
     noteKind: kind,
     suggestionKind: kind,
   };
+  // If this candidate is revised later, the conversation must show the fix as
+  // the answer being corrected, not the base candidate's answer.
+  const answer = {
+    note_kind: kind,
+    verdict: result.verdict,
+    suggestion: result.suggestion ?? '',
+    reasons: result.reasons,
+    suggestion_kind: kind,
+  };
   return {
-    message: base.message,
+    message: {
+      ...base.message,
+      content: [{ type: 'text', text: JSON.stringify(answer), citations: null }],
+    } as ReviewMessage,
     params: base.params,
     review,
     problems: findReviewProblems(review, input),
@@ -744,7 +772,9 @@ export const reviewNote = async (
         }
         if (decision.fix !== '') {
           const fix = fixCandidate(decision, toRevise, input);
-          if (fix.problems.length === 0) {
+          if (!fix) {
+            // An empty question is not a correction; revise without it.
+          } else if (fix.problems.length === 0) {
             judgeFix = fix;
           } else {
             // A correction that breaks the rules (usually too long) still

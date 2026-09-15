@@ -163,26 +163,30 @@ const BACKTICK_ALLOWLIST = new Set(
 
 // Outside backticks, in order: URLs (kept as-is), dotted identifiers with an
 // optional call, bare calls, CLI flags, angle-bracket tags, camelCase names,
-// environment variables (`ELECTRON_RUN_AS_NODE`), compound PascalCase class
-// names (`WebContents`, `BrowserWindow`).
+// environment variables (`ELECTRON_RUN_AS_NODE`), and Electron's own
+// multi-word class names (`WebContents`, `BrowserWindow`). Other PascalCase
+// words are left alone, since most are product names (`WhatsApp`, `OneDrive`).
 // Every alternative is anchored (lookbehind or `\b`) and the URL alternative
 // is bounded, so a long spaceless token cannot make the scan quadratic: the
 // note text is attacker-controlled (any fork PR), like the body in note-utils.
 const API_TOKEN =
-  /(?<![\w+.-])[a-z][\w+.-]{0,63}:\/\/\S{1,2048}|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b|\b[A-Z][A-Z\d]*(?:_[A-Z\d]+)+\b|\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g;
+  /(?<![\w+.-])[a-z][\w+.-]{0,63}:\/\/\S{1,2048}|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b|\b[A-Z][A-Z\d]*(?:_[A-Z\d]+)+\b|\b(?:BaseWindow|BrowserView|BrowserWindow|ClientRequest|CommandLine|DownloadItem|ImageView|IncomingMessage|IpcMainEvent|IpcMainInvokeEvent|IpcMainServiceWorkerEvent|IpcRendererEvent|MenuItem|MessageChannelMain|MessagePortMain|NativeImage|NavigationHistory|ServiceWorkerMain|ServiceWorkers|ShareMenu|TouchBar\w*|UtilityProcess|WebContents|WebContentsView|WebFrame|WebFrameMain|WebRequest)\b/g;
 
 // A note line longer than this is not style-checked at all (only its length
 // is reported), which keeps the per-line regex work bounded.
 export const MAX_LINT_LINE_LENGTH = 2000;
 
 // The style guide's limit for a one-line note or a single bullet.
-export const MAX_NOTE_LENGTH = 120;
+export const MAX_NOTE_LENGTH = 160;
 
 // Backport notes ("Backported fixes for CVE-2026-1234, ...", "Backported a fix
 // in Skia for 123456.") follow a fixed convention and often list every bug they
 // fix, so they are exempt from the length limit and from the Claude review.
 const SECURITY_BACKPORT = /^(security: )?backported\b/i;
 const lengthExempt = (item: string) => SECURITY_BACKPORT.test(item);
+
+// True when any line of the note is a backport line.
+export const hasBackportLine = (note: string) => noteItems(note).some(lengthExempt);
 
 // True when every line of the note is a security backport line.
 export const isSecurityBackportNote = (note: string) => {
@@ -256,7 +260,7 @@ const firstWord = (line: string) => /^([A-Za-z][\w-]*)/.exec(line)?.[1] ?? null;
 // findings and the line with every mechanical fix applied.
 // A later bullet such as "Use `X` instead of `Y`." tells apps what to do about
 // the change above it; it is an instruction, not a change to put in past tense.
-const INSTRUCTION = /^(use|set|call|pass)\b.*\binstead\b/i;
+const INSTRUCTION = /^\w+\b.*\binstead\b/i;
 
 const lintLine = (
   original: string,
@@ -397,8 +401,8 @@ const fixPlatformCase = (line: string) => {
         return proper;
       }
       const win = win1 ?? win2;
-      if (win !== 'windows') return match;
-      fixed.push('"windows" → "Windows"');
+      if (win === 'Windows') return match;
+      fixed.push(`"${win}" → "Windows"`);
       return win1 ? `${before} Windows` : `Windows ${after}`;
     }),
   );
@@ -409,7 +413,10 @@ const describesBreakingChange = (line: string) =>
   /^`?(removed|changed|deprecated|renamed|dropped)\b/i.test(line) ||
   // A major dependency upgrade names the version apps now get.
   /^(updated|upgraded|bumped) \S+.* to v?\d/i.test(line) ||
-  /\b(no longer|now)\b/i.test(line);
+  /\bno longer\b/i.test(line) ||
+  // "now" followed by what happens ("now throws", "is now required"), but not
+  // "for now", "right now" or "now and then".
+  /(?<!\b(?:for|right|until|by|just|even|from) )\bnow\s+(?!and\b|on\b)[a-z]/i.test(line);
 
 // findNoteInPRBody escapes angle brackets; this undoes that so tags are visible.
 export const unescapeNote = (note: string) => note.replaceAll('&lt;', '<').replaceAll('&gt;', '>');
@@ -465,7 +472,9 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
     }
   }
 
-  if (ctx.labels.includes(BREAKING_LABEL) && !items.some(describesBreakingChange)) {
+  // Checked on the fixed text, so "Bump Node.js to v22" counts as the
+  // "Updated Node.js to v22" the author is shown.
+  if (ctx.labels.includes(BREAKING_LABEL) && !fixedItems.some(describesBreakingChange)) {
     findings.push({
       rule: 'breaking-described',
       message: `This PR is ${BREAKING_LABEL}; say what breaks for app developers.`,

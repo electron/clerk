@@ -263,12 +263,35 @@ describe('lintNote', () => {
     expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
   });
 
+  it('leaves PascalCase product names alone', () => {
+    expect(rules('Fixed sharing links to WhatsApp, OneDrive and PowerPoint.')).toEqual([]);
+  });
+
+  it('fixes Windows in any wrong casing', () => {
+    const result = analyzeNote('Fixed a crash on WINDOWS and arm64 WinDows.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['platform-case']);
+    expect(result.fixed).toEqual('Fixed a crash on Windows and arm64 Windows.');
+  });
+
+  it('does not count an unrelated "now" as describing a breaking change', () => {
+    expect(rules('Fixed the tray icon for now.', ['semver/major'])).toEqual(['breaking-described']);
+    expect(rules('Fixed the tray, right now it works.', ['semver/major'])).toEqual([
+      'breaking-described',
+    ]);
+    expect(rules('`app.foo()` now throws when called early.', ['semver/major'])).toEqual([]);
+  });
+
+  it('checks a breaking change against the fixed note', () => {
+    expect(rules('Bump Node.js to v22.9.0.', ['semver/major'])).toEqual(['past-tense']);
+  });
+
   it('accepts an instruction bullet after the change it belongs to', () => {
     const note = [
       "* `getUserMedia` with `chromeMediaSource: 'desktop'` no longer accepts `WebContents` source ids.",
       "* Use `chromeMediaSource: 'tab'` with `webContents.getMediaSourceId()` instead.",
     ].join('\n');
     expect(rules(note)).toEqual([]);
+    expect(rules('* Removed `foo()`.\n* Enable `bar` instead.')).toEqual([]);
     expect(rules('* Use `foo` instead of `bar`.\n* Fixed a crash.')).toEqual(['past-tense']);
     expect(rules('Use `foo` instead of `bar`.')).toEqual(['past-tense']);
   });
@@ -293,13 +316,16 @@ describe('lintNote', () => {
   });
 
   it('measures the length after the mechanical fixes', () => {
-    // 116 characters as written, 122 once the API names are backticked.
-    const note =
-      'Fixed crashes in sharedTexture, service-worker ipcRenderer and utilityProcess.fork() caused by object lifetime bugs.';
+    // Exactly at the limit as written, over it once the three API names are backticked.
+    const base =
+      'Fixed crashes in sharedTexture, service-worker ipcRenderer and utilityProcess.fork() caused by object lifetime bugs';
+    const note = `${base}${'!'.repeat(MAX_NOTE_LENGTH - 1 - base.length)}.`;
     const result = analyzeNote(note, ctx);
-    expect(note.length).toBeLessThanOrEqual(MAX_NOTE_LENGTH);
+    expect(note).toHaveLength(MAX_NOTE_LENGTH);
     expect(result.findings.map((f) => f.rule)).toEqual(['backticks', 'length']);
-    expect(result.findings[1].message).toContain('is 122 characters with the fixes above');
+    expect(result.findings[1].message).toContain(
+      `is ${MAX_NOTE_LENGTH + 6} characters with the fixes above`,
+    );
   });
 
   it(`limits each note and bullet to ${MAX_NOTE_LENGTH} characters`, () => {

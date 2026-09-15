@@ -128,14 +128,25 @@ const upsertLintComment = async (
   }
 };
 
-// The Claude review can take seconds. A push or description edit in that time
+// The Claude review can take minutes. A push or description edit in that time
 // makes the event's snapshot of the PR stale, and the event for that change
 // posts its own result; writing from the stale snapshot could resolve the newer
-// event's failing comment or set a status for the wrong head.
+// event's failing comment or set a status for the wrong head. A PR closed or
+// merged in that time gets no write either.
 const isPRUnchanged = async (context: Context<'pull_request'>, pr: PullRequest) => {
   const { data } = await context.octokit.rest.pulls.get(context.repo({ pull_number: pr.number }));
-  return data.head.sha === pr.head.sha && (data.body ?? '') === (pr.body ?? '');
+  return (
+    data.state === 'open' &&
+    !data.merged &&
+    data.head.sha === pr.head.sha &&
+    (data.body ?? '') === (pr.body ?? '')
+  );
 };
+
+// The newest event seen for each PR. An event queued behind a slow review
+// skips its own review once a newer event for the same PR has arrived; the
+// newer event does the work.
+const latestEvent = new Map<string, number>();
 
 const submitFeedbackForPR = async (
   context: Context<'pull_request'>,
@@ -143,6 +154,7 @@ const submitFeedbackForPR = async (
   reviewClient: ReviewClient | null,
   botLogin: string,
   shouldComment = false,
+  isSuperseded = () => false,
 ) => {
   const releaseNotes = findNoteInPRBody(pr.body);
   const github = context.octokit;
@@ -211,6 +223,10 @@ const submitFeedbackForPR = async (
       if (result.findings.length > 0) {
         // A note over the length limit has no mechanical fix, so ask Claude
         // for a shorter one to show with the findings. The check still fails.
+        if (isSuperseded()) {
+          debug(`A newer event for this PR is queued: leaving the write to it.`);
+          return;
+        }
         const review =
           reviewClient && exceedsNoteLength(result.fixed ?? releaseNotes)
             ? await reviewNote(
@@ -234,6 +250,10 @@ const submitFeedbackForPR = async (
 
       // The style rules pass; optionally ask Claude whether the note tells app
       // developers what changed. Advisory only: the status stays green.
+      if (isSuperseded()) {
+        debug(`A newer event for this PR is queued: leaving the write to it.`);
+        return;
+      }
       const review = reviewClient
         ? await reviewNote({ note: releaseNotes, title: pr.title, labels }, reviewClient)
         : null;
@@ -292,11 +312,25 @@ export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: P
       // webhook response, so the feedback runs after the handler returns and
       // the delivery is acknowledged straight away.
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      serializePerPR(`${repo}#${pr.number}`, () =>
-        submitFeedbackForPR(context, pr, reviewClient, botLogin),
-      ).catch((err) => {
-        context.log.error({ err }, `Release notes feedback failed for ${repo}#${pr.number}`);
-      });
+      const key = `${repo}#${pr.number}`;
+      const seq = (latestEvent.get(key) ?? 0) + 1;
+      latestEvent.set(key, seq);
+      serializePerPR(key, () =>
+        submitFeedbackForPR(
+          context,
+          pr,
+          reviewClient,
+          botLogin,
+          false,
+          () => latestEvent.get(key) !== seq,
+        ),
+      )
+        .catch((err) => {
+          context.log.error({ err }, `Release notes feedback failed for ${repo}#${pr.number}`);
+        })
+        .finally(() => {
+          if (latestEvent.get(key) === seq) latestEvent.delete(key);
+        });
     }
   });
 };

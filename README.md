@@ -32,7 +32,7 @@ multiple notes, use a single `Notes:` followed by a bulleted list (see below).
   + Notes: Removed upstream code that used private Mac APIs.
   ```
 
-* Keep notes (and each bullet) to 120 characters or fewer.
+* Keep notes (and each bullet) to 160 characters or fewer.
   ```diff
   - Notes: Deprecated the synchronous `safeStorage.isEncryptionAvailable()`, `safeStorage.encryptString()` and `safeStorage.decryptString()` in favor of `isAsyncEncryptionAvailable()`, `encryptStringAsync()` and `decryptStringAsync()`.
   + Notes: Deprecated synchronous `safeStorage` functions.
@@ -60,7 +60,7 @@ the description is edited. Bulleted notes are checked one bullet at a time.
 * `backticks`: API names, calls, class names, CLI flags, tags and environment variables such as `webContents.print()`, `BrowserWindow`, `--enable-foo`, `<webview>`, `ELECTRON_RUN_AS_NODE` are wrapped in backticks.
 * `article`: `Fixed a crash`, not `Fixed crash`.
 * `platform-case`: platform names are capitalized (`macOS`, `Linux`, `Wayland`, `X11`, and `Windows` where it clearly names the platform, as in `on arm64 Windows`).
-* `length`: a note or bullet is at most 120 characters (counted after the fixes above), and a single-line note with more than two sentences should become bullets. Backport notes (any note starting with `Backported`, such as `Backported fixes for CVE-...`) are exempt from the 120-character limit, and Claude only checks them for clear grammar errors and typos.
+* `length`: a note or bullet is at most 160 characters (counted after the fixes above), and a single-line note with more than two sentences should become bullets. Backport notes (any note starting with `Backported`, such as `Backported fixes for CVE-...`) are exempt from the 160-character limit, and Claude only checks them for clear grammar errors and typos.
 * `breaking-described`: a `semver/major` PR's note says what breaks (starts with `Removed`/`Changed`/`Deprecated`/`Renamed`/`Dropped`, says what `now` or `no longer` happens, or names the new version of an upgraded dependency).
 
 Bot-authored PRs (other than `claude[bot]`) and trop backports (`Backport of #...`) are not linted.
@@ -70,7 +70,7 @@ Bot-authored PRs (other than `claude[bot]`) and trop backports (`Backport of #..
 Once a note has been through the style rules above, clerk can ask Claude about
 what the rules cannot judge.
 
-* A note over the 120-character limit fails the `length` rule, which has no
+* A note over the 160-character limit fails the `length` rule, which has no
   mechanical fix, so Claude writes a shorter version and clerk shows it in the
   failing comment. The check still fails until the author edits the note.
 * Any other note that passes the rules gets an advisory suggestion only when it
@@ -89,7 +89,7 @@ what the rules cannot judge.
 A rewrite keeps what app developers need: the kind of change, any instruction
 they must act on, every condition that limits who is affected (platform,
 options, triggers), public API and tool names, and the symptom users see. It
-drops how the fix works, internal names and causes, and aims for about 100
+drops how the fix works, internal names and causes, and aims for about 140
 characters. Bullets are only used for separate changes: a change and what apps
 must do about it stay in one sentence.
 

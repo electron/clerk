@@ -13,6 +13,7 @@ import {
   type ReviewMessage,
   type ReviewResult,
 } from '../src/note-review';
+import { MAX_NOTE_LENGTH } from '../src/note-lint';
 import * as noteUtils from '../src/note-utils';
 import {
   LINT_COMMENT_MARKER,
@@ -537,26 +538,11 @@ describe('probotRunner', () => {
 
     it('creates a single lint comment when two deliveries for one PR race', async () => {
       const payload = openPR();
-      let created: string | undefined;
 
-      // The first delivery sees no comment and creates one; the second must
-      // wait for it, see the created comment and leave it alone.
+      // The second delivery arrives before the first has written anything, so
+      // the first leaves the write to it: one listing, one comment, one status.
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
-      nock(GH_API)
-        .post(COMMENTS_PATH, (body: Record<string, string>) => {
-          expect(created).toBeUndefined();
-          created = body.body;
-          return true;
-        })
-        .reply(201);
-      nock(GH_API)
-        .get(COMMENTS_PATH)
-        .query(true)
-        .reply(200, () => {
-          expect(created).toBeDefined();
-          return [{ id: 8, body: created, user: BOT_USER }];
-        });
-      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+      nock(GH_API).post(COMMENTS_PATH).reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
       await Promise.all([
@@ -720,12 +706,19 @@ describe('probotRunner', () => {
     // still current; this answers with the snapshot itself (or overrides).
     const pullFetch = (
       payload: PullRequestOpenedEvent,
-      overrides: Partial<{ head: { sha: string }; body: string }> = {},
+      overrides: Partial<{
+        head: { sha: string };
+        body: string;
+        state: string;
+        merged: boolean;
+      }> = {},
     ) =>
       nock(GH_API)
         .get(PULL_PATH)
         .reply(200, {
           number: 1,
+          state: 'open',
+          merged: false,
           head: payload.pull_request.head,
           body: payload.pull_request.body,
           ...overrides,
@@ -863,7 +856,8 @@ describe('probotRunner', () => {
 
     it('shows a shorter rewrite from Claude in the failing comment for a long note', async () => {
       const long =
-        'Fixed a crash on macOS when the tray was closed while its context menu was still open and the owning window was being destroyed.';
+        'Fixed a crash on macOS when the tray was closed while its context menu was still open and the owning window was being destroyed by another window closing at the same time.';
+      expect(long.length).toBeGreaterThan(MAX_NOTE_LENGTH);
       const short = 'Fixed a crash on macOS when closing a tray with its context menu open.';
       const create = loadWithClient(
         vi.fn(async () =>
@@ -895,7 +889,9 @@ describe('probotRunner', () => {
       await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
-      expect(create.mock.calls[0][0].messages[0].content).toContain('over the 120-character limit');
+      expect(create.mock.calls[0][0].messages[0].content).toContain(
+        `over the ${MAX_NOTE_LENGTH}-character limit`,
+      );
     });
 
     it('reviews notes from claude[bot]', async () => {
@@ -996,6 +992,53 @@ describe('probotRunner', () => {
       expect(nock.isDone()).toBe(true);
     });
 
+    it('writes nothing when the PR was merged during the review', async () => {
+      loadWithClient(
+        vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
+      );
+      const payload = openPR();
+
+      pullFetch(payload, { state: 'closed', merged: true });
+
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('skips the review of an event that a newer event for the PR has replaced', async () => {
+      const pending: ((message: ReviewMessage) => void)[] = [];
+      const create = loadWithClient(
+        vi.fn(() => new Promise<ReviewMessage>((resolve) => pending.push(resolve))),
+      );
+      const first = openPR();
+      const second = openPR({
+        head: { sha: 'def456' },
+        body: 'Fixes something broken\n\nNotes: Fixed the tray icon.\n',
+      });
+      const third = openPR({
+        head: { sha: 'fed789' },
+        body: 'Fixes something broken\n\nNotes: fix crash for Notification close\n',
+      });
+
+      // The first event finds the PR moved on and writes nothing; the second
+      // never reviews or writes; the third posts its lint findings.
+      pullFetch(first, { head: third.pull_request.head, body: third.pull_request.body });
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API).post(COMMENTS_PATH).reply(201);
+      expectStatus(third, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '1', name: 'pull_request', payload: first });
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
+      await probot.receive({ id: '2', name: 'pull_request', payload: second });
+      await probot.receive({ id: '3', name: 'pull_request', payload: third });
+      for (const resolve of pending.splice(0)) {
+        resolve(claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] }));
+      }
+      await settleFeedback();
+
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
+    });
+
     it('writes nothing when the PR description changed during the review', async () => {
       loadWithClient(
         vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
@@ -1043,13 +1086,11 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(second, 'failure', 'Release notes need style fixes (see comment)');
 
-      const deliveries = Promise.all([
-        deliver(probot, { id: '1', name: 'pull_request', payload: first }),
-        deliver(probot, { id: '2', name: 'pull_request', payload: second }),
-      ]);
+      await probot.receive({ id: '1', name: 'pull_request', payload: first });
       await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
+      await probot.receive({ id: '2', name: 'pull_request', payload: second });
       finishReview({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] });
-      await deliveries;
+      await settleFeedback();
 
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);

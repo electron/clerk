@@ -370,6 +370,48 @@ describe('reviewNote', () => {
     expect(content).not.toContain('character limit and fails');
   });
 
+  it('judges different questions separately', async () => {
+    const { client, calls } = routedClient(
+      [ask('Say which platform.'), ask('Say what broke.'), ask('Say which platform.')],
+      [accept(2)],
+    );
+    await expect(reviewNote(input, client)).resolves.toEqual({
+      verdict: 'ask',
+      reasons: ['Say what broke.'],
+    });
+    const judged = calls(JUDGE_MODEL)[0][0].messages[0].content as string;
+    expect(judged).toContain('Say which platform.');
+    expect(judged).toContain('Say what broke.');
+  });
+
+  const rejectWithFix = (fix: string) =>
+    jsonMessage({
+      assessments: [{ candidate: 1, problems: ['p'] }],
+      best: 0,
+      closest: 1,
+      worth_posting: true,
+      fix,
+      fix_reasons: [],
+    });
+
+  it("reads the judge's question marker in any casing", async () => {
+    const { client } = routedClient(
+      [suggest(GOOD)],
+      [rejectWithFix('[ASK] Which platform is this for?'), accept(2)],
+    );
+    await expect(reviewNote(input, client)).resolves.toEqual({
+      verdict: 'ask',
+      reasons: ['Which platform is this for?'],
+    });
+  });
+
+  it("ignores the judge's question when it is empty", async () => {
+    const { client, calls } = routedClient([suggest(GOOD)], [rejectWithFix('[ask]'), accept(1)]);
+    await expect(reviewNote(input, client)).resolves.toMatchObject({ suggestion: GOOD });
+    const secondJudge = calls(JUDGE_MODEL)[1][0].messages[0].content as string;
+    expect(secondJudge).not.toContain('<candidate 2>');
+  });
+
   it('skips a review when too many are already running', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -542,7 +584,7 @@ describe('reviewNote', () => {
           verdict: 'suggest',
           suggestion: GOOD,
           reasons: [
-            'The note exceeds the 120-character limit.',
+            'The note exceeds the 160-character limit.',
             'Kept the platform and the API name.',
             'Dropped the internal class name.',
           ],
