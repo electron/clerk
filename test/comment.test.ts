@@ -6,8 +6,11 @@ import { type Context, Probot } from 'probot';
 import { createProbotRunner, probotRunner } from '../src/index';
 import {
   clearReviewCache,
+  JUDGE_MODEL,
+  REVIEW_CANDIDATES,
   REVIEW_STATUS_DESCRIPTION,
   type ReviewClient,
+  type ReviewMessage,
   type ReviewResult,
 } from '../src/note-review';
 import * as noteUtils from '../src/note-utils';
@@ -565,6 +568,21 @@ describe('probotRunner', () => {
       expect(nock.isDone()).toBe(true);
     });
 
+    it('lints notes from claude[bot]', async () => {
+      const payload = openPR({ user: { login: 'claude[bot]', type: 'Bot' } });
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('Notes: Fixed a crash for Notification close.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+    });
+
     it('skips lint for backports', async () => {
       const payload = openPR({
         body: 'Backport of #12345\n\nNotes: fix crash for Notification close\n',
@@ -679,16 +697,17 @@ describe('probotRunner', () => {
         },
       }) as PullRequestOpenedEvent;
 
-    const claudeReplies = (json: unknown) => ({
-      id: 'msg_1',
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-sonnet-5',
-      content: [{ type: 'text', text: JSON.stringify(json), citations: null }],
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      usage: { input_tokens: 1, output_tokens: 1 },
-    });
+    const claudeReplies = (json: unknown) =>
+      ({
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-fable-5-1',
+        content: [{ type: 'text', text: JSON.stringify(json), citations: null }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }) as unknown as ReviewMessage;
 
     // After the review the PR is re-read to make sure the event's snapshot is
     // still current; this answers with the snapshot itself (or overrides).
@@ -705,14 +724,28 @@ describe('probotRunner', () => {
           ...overrides,
         });
 
+    // The judge accepts the first candidate it is shown.
+    const judgeAccepts = () =>
+      claudeReplies({
+        assessments: [{ candidate: 1, problems: [] }],
+        best: 1,
+        closest: 1,
+        worth_posting: true,
+      });
+
     // Replaces the default probot (whose runner has no client in tests) with
-    // one wired to the given mock; null means "ANTHROPIC_API_KEY unset".
-    const loadWithClient = <T extends ReviewClient['messages']['create'] | null>(create: T) => {
+    // one wired to the given review-model mock; judge requests are answered by
+    // judgeAccepts. null means "ANTHROPIC_API_KEY unset".
+    const loadWithClient = <T extends ReviewClient['beta']['messages']['create'] | null>(
+      create: T,
+    ) => {
       probot = new Probot({
         privateKey: '9489ead8d9cb3566ba761a2c3dd278822f8d1205',
         appId: 690857,
       });
-      probot.load(createProbotRunner(create && { messages: { create } }));
+      const routed: ReviewClient['beta']['messages']['create'] = async (params) =>
+        params.model === JUDGE_MODEL ? judgeAccepts() : create!(params);
+      probot.load(createProbotRunner(create && { beta: { messages: { create: routed } } }));
       return create;
     };
 
@@ -745,10 +778,12 @@ describe('probotRunner', () => {
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
       const request = create.mock.calls[0][0];
       expect(request.messages[0].content).toContain(CLEAN_NOTE);
-      expect(request.messages[0].content).toContain('fix: UAF in TrayIconCocoa');
+      expect(request.messages[0].content).toContain(
+        '<pr_title>\nUAF in TrayIconCocoa\n</pr_title>',
+      );
       expect(request.messages[0].content).not.toContain('Fixes something broken');
     });
 
@@ -764,7 +799,7 @@ describe('probotRunner', () => {
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
 
     it('keeps the status green and posts nothing when the API fails', async () => {
@@ -819,6 +854,58 @@ describe('probotRunner', () => {
       expect(create).not.toHaveBeenCalled();
     });
 
+    it('shows a shorter rewrite from Claude in the failing comment for a long note', async () => {
+      const long =
+        'Fixed a crash on macOS when the tray was closed while its context menu was still open and the owning window was being destroyed.';
+      const short = 'Fixed a crash on macOS when closing a tray with its context menu open.';
+      const create = loadWithClient(
+        vi.fn(async () =>
+          claudeReplies({
+            note_kind: 'fix',
+            verdict: 'suggest',
+            suggestion: short,
+            reasons: ['Drops detail readers can find in the PR.'],
+            suggestion_kind: 'fix',
+          }),
+        ),
+      );
+      const payload = openPR({ body: `Notes: ${long}\n` });
+
+      pullFetch(payload);
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(body.body).toContain('**Release note style suggestions**');
+          expect(body.body).toContain(`This note is ${long.length} characters`);
+          expect(body.body).toContain('Suggested shorter note (written by Claude');
+          expect(body.body).toContain(`Notes: ${short}`);
+          expect(body.body).toContain('- Drops detail readers can find in the PR.');
+          return true;
+        })
+        .reply(201);
+      expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
+      expect(create.mock.calls[0][0].messages[0].content).toContain('over the 120-character limit');
+    });
+
+    it('reviews notes from claude[bot]', async () => {
+      const create = loadWithClient(
+        vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
+      );
+      const payload = openPR({ user: { login: 'claude[bot]', type: 'Bot' } });
+
+      pullFetch(payload);
+      nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
+    });
+
     it('does not review when the override label is present', async () => {
       const create = loadWithClient(vi.fn());
       const payload = openPR({ labels: [{ name: OVERRIDE_LABEL }] });
@@ -861,7 +948,7 @@ describe('probotRunner', () => {
       await probot.receive({ id: '2', name: 'pull_request', payload: second });
 
       expect(nock.isDone()).toBe(true);
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
 
     it('writes nothing when the PR head moved on during the review', async () => {
@@ -878,7 +965,7 @@ describe('probotRunner', () => {
 
       await probot.receive({ id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
 
     it('writes nothing when the PR description changed during the review', async () => {
@@ -899,12 +986,15 @@ describe('probotRunner', () => {
       // the first then re-reads the PR, sees the newer head and writes nothing,
       // and the second posts its findings. Without this the second's failing
       // comment would be posted and then marked resolved by the first.
-      let finishReview!: (result: ReviewResult & { suggestion: string }) => void;
+      const pending: ((message: ReviewMessage) => void)[] = [];
+      const finishReview = (result: ReviewResult & { suggestion: string }) => {
+        for (const resolve of pending.splice(0)) resolve(claudeReplies(result));
+      };
       const create = loadWithClient(
         vi.fn(
           () =>
-            new Promise<ReturnType<typeof claudeReplies>>((resolve) => {
-              finishReview = (result) => resolve(claudeReplies(result));
+            new Promise<ReviewMessage>((resolve) => {
+              pending.push(resolve);
             }),
         ),
       );
@@ -929,12 +1019,12 @@ describe('probotRunner', () => {
         probot.receive({ id: '1', name: 'pull_request', payload: first }),
         probot.receive({ id: '2', name: 'pull_request', payload: second }),
       ]);
-      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
       finishReview({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] });
       await deliveries;
 
       expect(nock.isDone()).toBe(true);
-      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
   });
 });

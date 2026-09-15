@@ -96,6 +96,9 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
   /^nothing.?$/i,
 ];
 
+// `none (reverts an unreleased change)`: a synonym followed only by a reason.
+const WITH_REASON = /^(.*?)\s*\([^()]*\)\.?$/;
+
 // True for the `none` synonyms that mean "this change has no release note".
 // The synonym may be written as a single bullet (`Notes:\n* none`), so a
 // leading `*` or `-` marker is ignored; a bulleted note with more than one
@@ -105,7 +108,9 @@ export const isNoNotesNote = (note: string) => {
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/^[*-]\s*/, ''))
     .filter((line) => line !== '');
-  return items.length === 1 && OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(items[0]));
+  if (items.length !== 1) return false;
+  const bare = items[0].replace(WITH_REASON, '$1');
+  return OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(items[0]) || rx.test(bare));
 };
 
 export const createPRCommentFromNotes = (releaseNotes: string | null) => {

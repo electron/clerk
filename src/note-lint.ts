@@ -11,6 +11,7 @@ export type LintRule =
   | 'meta-text'
   | 'backticks'
   | 'article'
+  | 'platform-case'
   | 'length'
   | 'breaking-described';
 
@@ -94,13 +95,15 @@ const PAST_TENSE: Record<string, string> = {
   changes: 'Changed',
 };
 
-const COMMIT_PREFIX = /^\w+(\([^)]*\))?!?:\s+/;
+export const COMMIT_PREFIX = /^\w+(\([^)]*\))?!?:\s+/;
 
 // Whole tokens only (the lookarounds), so `semver/patches` or `no-notes-yet`
 // is prose, not metadata.
 const META_PHRASE =
   '(?<![\\w-])(?:semver\\/(?:none|patch|minor|major)|no user[- ]facing(?: changes?)?|see breaking changes|no-notes)(?![\\w-])';
-const META_TEXT = new RegExp(META_PHRASE, 'i');
+// "Backported fix for none." is a mangled `Notes: none`; the whole line is metadata.
+const MANGLED_NONE = /^backported (?:a )?fix(?:es)? for (?:none|nothing|n\/a)\.?$/i;
+const META_TEXT = new RegExp(`${META_PHRASE}|${MANGLED_NONE.source}`, 'i');
 // A parenthetical that is only metadata, e.g. `(See breaking changes.)`.
 const META_PARENTHETICAL = new RegExp(`\\s*\\([^()]*${META_PHRASE}[^()]*\\)`, 'gi');
 // A bare meta phrase with the clause punctuation around it, e.g. `; semver/patch`
@@ -134,21 +137,76 @@ const BACKTICK_ALLOWLIST = new Set(
     'iPhone',
     'iPad',
     'iCloud',
+    'sRGB',
     'webOS',
+    'JavaScript',
+    'TypeScript',
+    'DevTools',
+    'GitHub',
+    'WebAssembly',
+    'WebAuthn',
+    'WebSocket',
+    'WebSockets',
+    'WebKit',
+    'PowerShell',
+    'FaceTime',
+    'YouTube',
+    'MacBook',
+    'AppKit',
+    'CoreAudio',
+    'PipeWire',
+    'FreeBSD',
+    'OpenSSL',
+    'BoringSSL',
   ].map((word) => word.toLowerCase()),
 );
 
 // Outside backticks, in order: URLs (kept as-is), dotted identifiers with an
-// optional call, bare calls, CLI flags, angle-bracket tags, camelCase names.
+// optional call, bare calls, CLI flags, angle-bracket tags, camelCase names,
+// environment variables (`ELECTRON_RUN_AS_NODE`), compound PascalCase class
+// names (`WebContents`, `BrowserWindow`).
 // Every alternative is anchored (lookbehind or `\b`) and the URL alternative
 // is bounded, so a long spaceless token cannot make the scan quadratic: the
 // note text is attacker-controlled (any fork PR), like the body in note-utils.
 const API_TOKEN =
-  /(?<![\w+.-])[a-z][\w+.-]{0,63}:\/\/\S{1,2048}|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b/g;
+  /(?<![\w+.-])[a-z][\w+.-]{0,63}:\/\/\S{1,2048}|(?<![\w$.])[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(\))?|\b\w+\(\)|--[\w-]+|<\/?\w+>|\b[a-z]+[A-Z][A-Za-z\d]*\b|\b[A-Z][A-Z\d]*(?:_[A-Z\d]+)+\b|\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g;
 
 // A note line longer than this is not style-checked at all (only its length
 // is reported), which keeps the per-line regex work bounded.
 export const MAX_LINT_LINE_LENGTH = 2000;
+
+// The style guide's limit for a one-line note or a single bullet.
+export const MAX_NOTE_LENGTH = 120;
+
+// Backport notes ("Backported fixes for CVE-2026-1234, ...", "Backported a fix
+// in Skia for 123456.") follow a fixed convention and often list every bug they
+// fix, so they are exempt from the length limit and from the Claude review.
+const SECURITY_BACKPORT = /^(security: )?backported\b/i;
+const lengthExempt = (item: string) => SECURITY_BACKPORT.test(item);
+
+// True when every line of the note is a security backport line.
+export const isSecurityBackportNote = (note: string) => {
+  const items = noteItems(note);
+  return items.length > 0 && items.every(lengthExempt);
+};
+
+// The note's lines (or bullets) with any bullet marker removed.
+const noteItems = (note: string) =>
+  unescapeNote(note)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => line.replace(/^[*-]\s+/, ''));
+
+// True when some line is over MAX_NOTE_LENGTH but still short enough to be
+// linted (and reviewed) at all.
+export const exceedsNoteLength = (note: string) => {
+  const items = noteItems(note);
+  return (
+    items.some((item) => item.length > MAX_NOTE_LENGTH && !lengthExempt(item)) &&
+    items.every((item) => item.length <= MAX_LINT_LINE_LENGTH)
+  );
+};
 
 const CODE_SPAN = /`[^`]*`/g;
 
@@ -226,7 +284,7 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
       .replace(/([.!?])[.,;:]+(?=\s|$)/g, '$1')
       .replace(/^[.,;:!?]+\s*/, '')
       .trim();
-    line = /[A-Za-z\d]/.test(stripped) ? stripped : 'none';
+    line = /[A-Za-z\d]/.test(stripped) && !MANGLED_NONE.test(line) ? stripped : 'none';
     findings.push({
       rule: 'meta-text',
       message: `Leave out metadata like "${meta[0]}"; use \`Notes: none\` for changes users won't notice.`,
@@ -264,10 +322,21 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
 
   const article = /^Fixed (crash|issue|bug|regression|leak)\b/.exec(line);
   if (article) {
-    line = line.replace(article[0], `Fixed a ${article[1]}`);
+    const fixedWith = `Fixed ${/^[aeiou]/.test(article[1]) ? 'an' : 'a'} ${article[1]}`;
+    line = line.replace(article[0], fixedWith);
     findings.push({
       rule: 'article',
-      message: `Say "Fixed a ${article[1]}", not "${article[0]}".`,
+      message: `Say "${fixedWith}", not "${article[0]}".`,
+      suggestion: line,
+    });
+  }
+
+  const platforms = fixPlatformCase(line);
+  if (platforms.fixed.length > 0) {
+    line = platforms.result;
+    findings.push({
+      rule: 'platform-case',
+      message: `Capitalize platform names: ${platforms.fixed.join(', ')}.`,
       suggestion: line,
     });
   }
@@ -296,9 +365,44 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
   return { findings, fixed: line };
 };
 
+// Platform names written in the wrong case. "windows" is only fixed where it
+// clearly names the platform ("on windows", "arm64 windows", "windows native"),
+// since it is also an ordinary word. URLs are skipped.
+const PLATFORM_CASE =
+  /(\S+:\/\/\S*)|\b(mac ?os)\b|\b(linux|wayland|x11)\b|\b(on|arm|arm64|x64|ia32) (windows)\b|\b(windows) (native|arm64|x64|ia32|\d+)\b/gi;
+
+const PROPER_NAMES: Record<string, string> = { linux: 'Linux', wayland: 'Wayland', x11: 'X11' };
+
+const fixPlatformCase = (line: string) => {
+  const fixed: string[] = [];
+  const result = mapOutsideCode(line, (text) =>
+    text.replace(PLATFORM_CASE, (match, url, mac, linux, before, win1, win2, after) => {
+      if (url) return match;
+      if (mac) {
+        if (mac === 'macOS') return match;
+        fixed.push(`"${mac}" → "macOS"`);
+        return 'macOS';
+      }
+      if (linux) {
+        const proper = PROPER_NAMES[linux.toLowerCase()];
+        if (linux === proper) return match;
+        fixed.push(`"${linux}" → "${proper}"`);
+        return proper;
+      }
+      const win = win1 ?? win2;
+      if (win !== 'windows') return match;
+      fixed.push('"windows" → "Windows"');
+      return win1 ? `${before} Windows` : `Windows ${after}`;
+    }),
+  );
+  return { result, fixed };
+};
+
 const describesBreakingChange = (line: string) =>
   /^`?(removed|changed|deprecated|renamed|dropped)\b/i.test(line) ||
-  /\b(no longer|now requires|is now|are now)\b/i.test(line);
+  // A major dependency upgrade names the version apps now get.
+  /^(updated|upgraded|bumped) \S+.* to v?\d/i.test(line) ||
+  /\b(no longer|now)\b/i.test(line);
 
 // findNoteInPRBody escapes angle brackets; this undoes that so tags are visible.
 export const unescapeNote = (note: string) => note.replaceAll('&lt;', '<').replaceAll('&gt;', '>');
@@ -331,13 +435,21 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
     }
     const result = lintLine(item);
     findings.push(...result.findings.map((f) => ({ ...f, message: prefix + f.message })));
+    // Measured after the mechanical fixes (added backticks can push a line over).
+    if (result.fixed.length > MAX_NOTE_LENGTH && !lengthExempt(result.fixed)) {
+      const fixedNote = result.fixed === item ? '' : ' with the fixes above';
+      findings.push({
+        rule: 'length',
+        message: `${prefix}This ${bulleted ? 'bullet' : 'note'} is ${result.fixed.length} characters${fixedNote}; keep it to at most ${MAX_NOTE_LENGTH} by dropping detail readers can find in the PR.`,
+      });
+    }
     if (result.fixed !== item) changed = true;
     fixedItems.push(result.fixed);
   });
 
   if (!bulleted && items.length === 1) {
     const line = items[0];
-    if (line.length <= MAX_LINT_LINE_LENGTH && (line.length > 300 || countSentences(line) > 2)) {
+    if (line.length <= MAX_NOTE_LENGTH && countSentences(line) > 2) {
       findings.push({
         rule: 'length',
         message:
@@ -365,14 +477,33 @@ export const lintNote = (note: string, ctx: LintContext): LintFinding[] =>
 export const escapeProse = (text: string) =>
   mapOutsideCode(text, (prose) => prose.replaceAll('<', '&lt;').replaceAll('>', '&gt;'));
 
-export const createLintCommentBody = ({ findings, fixed }: LintResult) => {
+// A shorter rewrite from the Claude review, shown in place of the mechanical
+// fix when the note is over the length limit.
+export interface LintRewrite {
+  suggestion: string;
+  reasons: string[];
+}
+
+// Model output: keep it from opening or closing a code fence in the comment.
+export const stripFences = (text: string) => text.replace(/`{3,}/g, '').trim();
+
+export const createLintCommentBody = ({ findings, fixed }: LintResult, rewrite?: LintRewrite) => {
   const bullets = findings.map((f) => {
     const suggestion = f.suggestion ? `\n  Suggestion: ${escapeProse(f.suggestion)}` : '';
     return `- ${escapeProse(f.message)}${suggestion}`;
   });
-  const suggested = fixed
-    ? `\n\nSuggested note:\n\n\`\`\`\n${formatNotesBlock(fixed)}\n\`\`\``
-    : '';
+  let suggested = fixed ? `\n\nSuggested note:\n\n\`\`\`\n${formatNotesBlock(fixed)}\n\`\`\`` : '';
+  if (rewrite) {
+    const reasons = rewrite.reasons
+      .map(stripFences)
+      .filter((reason) => reason !== '')
+      .map((reason) => `\n- ${escapeProse(reason)}`)
+      .join('');
+    suggested =
+      `\n\nSuggested shorter note (written by Claude; it may be wrong, so keep your own facts):\n\n` +
+      `\`\`\`\n${formatNotesBlock(stripFences(rewrite.suggestion))}\n\`\`\`` +
+      (reasons ? `\n${reasons}` : '');
+  }
 
   return (
     [

@@ -136,6 +136,18 @@ describe('comment generation', () => {
     );
   });
 
+  it('treats a none synonym followed by a reason as no notes', () => {
+    for (const note of [
+      'none (reverts an unreleased change)',
+      'None (internal).',
+      '* nothing (see #1)',
+    ]) {
+      expect(isNoNotesNote(note), note).toBe(true);
+    }
+    expect(isNoNotesNote('Fixed a crash (on macOS).')).toBe(false);
+    expect(isNoNotesNote('none of the windows closed (macOS)')).toBe(false);
+  });
+
   it('shows a bulleted note that has a real item next to none', () => {
     const note = '* Fixed a crash.\n* none';
     expect(isNoNotesNote(note)).toBe(false);

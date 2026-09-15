@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeNote,
   createLintCommentBody,
+  exceedsNoteLength,
+  isSecurityBackportNote,
   lintNote,
   MAX_LINT_LINE_LENGTH,
+  MAX_NOTE_LENGTH,
 } from '../src/note-lint';
 import { LINT_COMMENT_MARKER } from '../src/constants';
 
@@ -16,10 +19,10 @@ describe('lintNote', () => {
   it('accepts well-formed notes', () => {
     const good = [
       'Frameless windows on Linux now have rounded corners by default, just like on macOS and Windows.',
-      '`&lt;webview&gt;` and `window.open` now inherit `nodeIntegrationInWorker` from the embedder, consistent with the other Node and sandbox preferences.',
+      '`&lt;webview&gt;` and `window.open` now inherit `nodeIntegrationInWorker` from the embedder.',
       'Added `webFrameMain.printToPDF()` to allow printing individual frames to PDF from the main process.',
       'Updated Chromium to 152.0.7977.54.',
-      "Fixed a crash on macOS when a notification's icon could not be attached; the notification is now shown without the icon.",
+      "Fixed a crash on macOS when a notification's icon could not be attached; it is now shown without the icon.",
       'Improved app startup time by booting the main process from an embedded Node.js startup snapshot.',
       'Fixed a UAF with the tray.',
       'Updated Node.js to v22.1.0 (see https://nodejs.org/en/blog, e.g. the changelog on electronjs.org).',
@@ -190,7 +193,7 @@ describe('lintNote', () => {
     for (const noun of ['crash', 'issue', 'bug', 'regression', 'leak']) {
       const result = analyzeNote(`Fixed ${noun} in the tray.`, ctx);
       expect(result.findings.map((f) => f.rule)).toEqual(['article']);
-      expect(result.fixed).toEqual(`Fixed a ${noun} in the tray.`);
+      expect(result.fixed).toEqual(`Fixed ${noun === 'issue' ? 'an' : 'a'} ${noun} in the tray.`);
     }
     expect(rules('Fixed crashes in the tray.')).toEqual([]);
   });
@@ -200,6 +203,105 @@ describe('lintNote', () => {
     expect(rules(`Fixed ${'a very long thing '.repeat(20)}in the tray.`)).toEqual(['length']);
     expect(rules('Fixed one thing. Fixed another thing.')).toEqual([]);
     expect(rules('* Fixed one.\n* Fixed two.\n* Fixed three.')).toEqual([]);
+  });
+
+  it('capitalizes platform names where they clearly name the platform', () => {
+    const result = analyzeNote('Fixed a shutdown crash on arm64 windows, macos and linux.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['platform-case']);
+    expect(result.fixed).toEqual('Fixed a shutdown crash on arm64 Windows, macOS and Linux.');
+    expect(analyzeNote('Fixed input on certain wayland compositors and x11.', ctx).fixed).toEqual(
+      'Fixed input on certain Wayland compositors and X11.',
+    );
+    expect(analyzeNote('Fixed display errors on some versions of windows 10.', ctx).fixed).toEqual(
+      'Fixed display errors on some versions of Windows 10.',
+    );
+    expect(analyzeNote('Fixed windows native message boxes.', ctx).fixed).toEqual(
+      'Fixed Windows native message boxes.',
+    );
+    for (const note of [
+      'Fixed child windows closing early.',
+      'Fixed a crash (see https://example.com/linux/macos).',
+      'Fixed `on windows` in code.',
+    ]) {
+      expect(rules(note), note).toEqual([]);
+    }
+  });
+
+  it('wraps compound class names but not common product names', () => {
+    const result = analyzeNote('Fixed a crash with BaseWindow and BrowserWindow.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['backticks']);
+    expect(result.fixed).toEqual('Fixed a crash with `BaseWindow` and `BrowserWindow`.');
+    expect(rules('Fixed DevTools and JavaScript errors on GitHub and in WebAssembly.')).toEqual([]);
+  });
+
+  it('accepts a semver/major dependency upgrade that names the version', () => {
+    expect(rules('Upgraded Node.js to v22.9.0.', ['semver/major'])).toEqual([]);
+    expect(rules('Updated Chromium to 134.0.6998.23.', ['semver/major'])).toEqual([]);
+  });
+
+  it('accepts a semver/major note that says what now happens', () => {
+    expect(rules('`nativeImage` now normalizes pixel values to sRGB.', ['semver/major'])).toEqual(
+      [],
+    );
+  });
+
+  it('wraps environment variables in backticks', () => {
+    const result = analyzeNote('Removed the ELECTRON_SKIP_BINARY_DOWNLOAD variable.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['backticks']);
+    expect(result.fixed).toEqual('Removed the `ELECTRON_SKIP_BINARY_DOWNLOAD` variable.');
+  });
+
+  it('recognises other wordings of security backport notes', () => {
+    for (const note of [
+      'Backported a fix for route_id validation in the GPU command buffer.',
+      'Backported upstream v8 fixes for a maglev use-count accounting issue.',
+      'Backported upstream fixes for two edge cases in the WebNN TFLite graph builder.',
+    ]) {
+      expect(isSecurityBackportNote(note), note).toBe(true);
+    }
+    expect(isSecurityBackportNote('Backported fix in Skia for 495534710.')).toBe(true);
+    expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
+  });
+
+  it('uses "an" before a vowel when adding the article', () => {
+    expect(analyzeNote('Fixed issue with window resizing.', ctx).fixed).toEqual(
+      'Fixed an issue with window resizing.',
+    );
+    expect(analyzeNote('Fixed crash on quit.', ctx).fixed).toEqual('Fixed a crash on quit.');
+  });
+
+  it('treats "Backported fix for none." as Notes: none', () => {
+    const result = analyzeNote('Backported fix for none.', ctx);
+    expect(result.findings.map((f) => f.rule)).toEqual(['meta-text']);
+    expect(result.fixed).toEqual('none');
+  });
+
+  it('does not limit the length of security backport notes', () => {
+    const cves = Array.from({ length: 12 }, (_, i) => `CVE-2026-${6300 + i}`).join(', ');
+    expect(rules(`Backported fixes for ${cves}.`)).toEqual([]);
+    expect(exceedsNoteLength(`Backported fixes for ${cves}.`)).toBe(false);
+  });
+
+  it('measures the length after the mechanical fixes', () => {
+    // 116 characters as written, 122 once the API names are backticked.
+    const note =
+      'Fixed crashes in sharedTexture, service-worker ipcRenderer and utilityProcess.fork() caused by object lifetime bugs.';
+    const result = analyzeNote(note, ctx);
+    expect(note.length).toBeLessThanOrEqual(MAX_NOTE_LENGTH);
+    expect(result.findings.map((f) => f.rule)).toEqual(['backticks', 'length']);
+    expect(result.findings[1].message).toContain('is 122 characters with the fixes above');
+  });
+
+  it(`limits each note and bullet to ${MAX_NOTE_LENGTH} characters`, () => {
+    const note = (length: number) => `Fixed a crash in the tray${'!'.repeat(length - 26)}.`;
+    expect(note(MAX_NOTE_LENGTH)).toHaveLength(MAX_NOTE_LENGTH);
+    expect(rules(note(MAX_NOTE_LENGTH))).toEqual([]);
+    expect(rules(note(MAX_NOTE_LENGTH + 1))).toEqual(['length']);
+
+    const result = analyzeNote(`* Fixed one.\n* ${note(MAX_NOTE_LENGTH + 1)}`, ctx);
+    expect(result.findings.map((f) => f.message)).toEqual([
+      `Bullet 2: This bullet is ${MAX_NOTE_LENGTH + 1} characters; keep it to at most ${MAX_NOTE_LENGTH} by dropping detail readers can find in the PR.`,
+    ]);
   });
 
   it('bounds the work done on a very long spaceless token', () => {

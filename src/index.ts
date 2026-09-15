@@ -7,7 +7,7 @@ import {
   isNoNotesNote,
   updatePRBodyForNoNotes,
 } from './note-utils';
-import { analyzeNote, createLintCommentBody } from './note-lint';
+import { analyzeNote, createLintCommentBody, exceedsNoteLength } from './note-lint';
 import {
   createReviewClient,
   createReviewCommentBody,
@@ -20,6 +20,7 @@ import d from 'debug';
 import {
   LINT_COMMENT_MARKER,
   LINT_COMMENT_RESOLVED,
+  LINTED_BOT_LOGINS,
   OVERRIDE_LABEL,
   SEMANTIC_BUILD_PREFIX,
 } from './constants';
@@ -37,10 +38,13 @@ const setStatus = (
     context.repo({ state, sha: pr.head.sha, description, context: 'release-notes' }),
   );
 
-// Style findings are skipped for bot-authored PRs and for trop backports,
-// which copy the original PR's note verbatim.
+// Style findings are skipped for bot-authored PRs (except those in
+// LINTED_BOT_LOGINS) and for trop backports, which copy the original PR's note
+// verbatim.
 const shouldLintNote = (pr: PullRequest, note: string) =>
-  pr.user.type !== 'Bot' && !/Backport of #/.test(pr.body ?? '') && !isNoNotesNote(note);
+  (pr.user.type !== 'Bot' || LINTED_BOT_LOGINS.includes(pr.user.login)) &&
+  !/Backport of #/.test(pr.body ?? '') &&
+  !isNoNotesNote(note);
 
 // Login of the app's own bot user, e.g. `release-clerk[bot]`. Resolved once
 // from the app's slug; the constant is the fallback when that lookup is not
@@ -205,8 +209,25 @@ const submitFeedbackForPR = async (
     if (!shouldComment && shouldLintNote(pr, releaseNotes)) {
       const result = analyzeNote(releaseNotes, { labels, title: pr.title });
       if (result.findings.length > 0) {
+        // A note over the length limit has no mechanical fix, so ask Claude
+        // for a shorter one to show with the findings. The check still fails.
+        const review =
+          reviewClient && exceedsNoteLength(result.fixed ?? releaseNotes)
+            ? await reviewNote(
+                { note: result.fixed ?? releaseNotes, title: pr.title, labels },
+                reviewClient,
+              )
+            : null;
+        if (review && !(await isPRUnchanged(context, pr))) {
+          debug(`PR changed during the Claude review: leaving the write to the newer event.`);
+          return;
+        }
+        const rewrite =
+          review?.verdict === 'suggest'
+            ? { suggestion: review.suggestion ?? '', reasons: review.reasons }
+            : undefined;
         debug(`Release Notes need style fixes: posting failed check.`);
-        await upsertLintComment(context, pr, createLintCommentBody(result), botLogin);
+        await upsertLintComment(context, pr, createLintCommentBody(result, rewrite), botLogin);
         await setStatus(context, pr, 'failure', 'Release notes need style fixes (see comment)');
         return;
       }
@@ -220,7 +241,7 @@ const submitFeedbackForPR = async (
         debug(`PR changed during the Claude review: leaving the write to the newer event.`);
         return;
       }
-      if (review?.verdict === 'suggest') {
+      if (review && review.verdict !== 'ok') {
         debug(`Claude suggested a release note rewrite: posting advisory comment.`);
         await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
         await setStatus(context, pr, 'success', REVIEW_STATUS_DESCRIPTION);
