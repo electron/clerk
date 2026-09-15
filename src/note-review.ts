@@ -474,7 +474,7 @@ export const findReviewProblems = (review: InterpretedReview, input: ReviewInput
   const silent = [
     ...droppedNames(input.note, result.suggestion ?? ''),
     ...droppedIds(input.note, result.suggestion ?? ''),
-  ].filter((name) => !reasons.includes(name));
+  ].filter((name) => !mentionsToken(reasons, name));
   if (silent.length > 0) {
     problems.push(
       `It drops ${silent.map((n) => `\`${n}\``).join(', ')} without saying so in the reasons; keep ${silent.length > 1 ? 'them' : 'it'}, or name ${silent.length > 1 ? 'them' : 'it'} in a reason explaining why an app developer does not need ${silent.length > 1 ? 'them' : 'it'}.`,
@@ -610,14 +610,31 @@ interface Candidate {
 const CODE_SPAN = /`([^`]+)`/g;
 
 // Backticked names in the note that the rewrite no longer mentions.
-// CVE and bug IDs in a note (backport notes list them in plain text), and the
-// ones a rewrite leaves out.
-const BUG_ID =
-  /\bCVE-\d{4}-\d{4,}\b|\b(?:b|crbug(?:\.com)?)\/\d{5,}\b|(?<![\w.-])\d{6,}(?![\w-]|\.\d)/gi;
+// CVE and bug IDs in a note, and the ones a rewrite leaves out. A bare number
+// only counts as a bug ID on a backport line ("Backported fix for 1234567."),
+// so ordinary numbers such as a 300000 ms timeout are not IDs.
+const BUG_ID = /\bCVE-\d{4}-\d{4,}\b|\b(?:b|crbug(?:\.com)?)\/\d{5,}\b/gi;
+const BARE_BUG_ID = /(?<![\w.-])\d{6,}(?![\w-]|\.\d)/g;
+const idsIn = (text: string) =>
+  unescapeNote(text)
+    .split('\n')
+    .flatMap((line) => [
+      ...[...line.matchAll(BUG_ID)].map((m) => m[0]),
+      ...(hasBackportLine(line) ? [...line.matchAll(BARE_BUG_ID)].map((m) => m[0]) : []),
+    ]);
 export const droppedIds = (note: string, rewrite: string) => {
-  const kept = new Set([...unescapeNote(rewrite).matchAll(BUG_ID)].map((m) => m[0].toUpperCase()));
-  const ids = [...unescapeNote(note).matchAll(BUG_ID)].map((m) => m[0]);
-  return [...new Set(ids)].filter((id) => !kept.has(id.toUpperCase()));
+  const kept = new Set(
+    [...unescapeNote(rewrite).matchAll(BUG_ID), ...unescapeNote(rewrite).matchAll(BARE_BUG_ID)].map(
+      (m) => m[0].toUpperCase(),
+    ),
+  );
+  return [...new Set(idsIn(note))].filter((id) => !kept.has(id.toUpperCase()));
+};
+
+// True when the text names `token` as a whole token, not inside a longer one.
+const mentionsToken = (text: string, token: string) => {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\w$-])${escaped}(?![\\w$-])`, 'i').test(text);
 };
 
 export const droppedNames = (note: string, rewrite: string) => {

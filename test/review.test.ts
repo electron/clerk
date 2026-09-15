@@ -584,6 +584,8 @@ describe('reviewNote', () => {
       ),
     ).toEqual(['CVE-2026-1235', '4912345']);
     expect(droppedIds('Updated Chromium to 134.0.6998.23.', 'Updated Chromium.')).toEqual([]);
+    // A bare number is only a bug ID on a backport line.
+    expect(droppedIds('Raised the timeout to 300000 ms.', 'Raised the timeout.')).toEqual([]);
     const backport = { ...input, note: 'Backported fixes for CVE-2026-1234 and CVE-2026-1235.' };
     const silentDrop = findReviewProblems(
       {
@@ -599,6 +601,22 @@ describe('reviewNote', () => {
       backport,
     );
     expect(silentDrop.join(' ')).toContain('CVE-2026-1235');
+    // A reason only explains a dropped ID that it names as a whole token.
+    const bare = { ...input, note: 'Backported fixes for 4912345 and 4912346.' };
+    const partial = findReviewProblems(
+      {
+        result: {
+          verdict: 'suggest',
+          suggestion: 'Backported fixes for 4912345.',
+          reasons: ['Raised the limit to 491234600.'],
+        },
+        complete: true,
+        noteKind: 'fix',
+        suggestionKind: 'fix',
+      },
+      bare,
+    );
+    expect(partial.join(' ')).toContain('4912346');
     expect(droppedNames('Fixed `app.quit()` on `macOS`.', 'Fixed app.quit() on macOS.')).toEqual(
       [],
     );

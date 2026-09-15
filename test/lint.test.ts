@@ -274,6 +274,7 @@ describe('lintNote', () => {
     expect(escapeProse('Ask @someone, see #123 and www.evil.example.')).toEqual(
       `Ask @${Z}someone, see #${Z}123 and www${Z}.evil.example.`,
     );
+    expect(escapeProse('Mail someone@evil.example.')).toEqual(`Mail someone@${Z}evil.example.`);
     expect(escapeProse('See https://x.example/@victim and www.@user')).toEqual(
       `See https:${Z}//x.example/@${Z}victim and www${Z}.@${Z}user`,
     );
