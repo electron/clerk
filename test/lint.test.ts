@@ -286,6 +286,10 @@ describe('lintNote', () => {
       `Ask &amp;#${Z}64;someone or &amp;commat;x`,
     );
     expect(escapeProse('<img src=x>')).toEqual('&lt;img src=x&gt;');
+    // Code spans are not linked or mentioned by GitHub, so they are left as written.
+    expect(escapeProse('Run `npm i @electron/get` or see `https://x.example/#1`.')).toEqual(
+      'Run `npm i @electron/get` or see `https://x.example/#1`.',
+    );
     expect(escapeProse('Use `a[0] && b` <here> & more.')).toEqual(
       'Use `a[0] && b` &lt;here&gt; &amp; more.',
     );
