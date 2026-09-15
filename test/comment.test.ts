@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import nock from 'nock';
-import { type Context, Probot } from 'probot';
+import { type Context, Probot, ProbotOctokit } from 'probot';
 
-import { createProbotRunner, probotRunner, settleFeedback } from '../src/index';
+import {
+  CHECKING_DESCRIPTION,
+  createProbotRunner,
+  ERROR_DESCRIPTION,
+  probotRunner,
+  settleFeedback,
+} from '../src/index';
 import {
   clearReviewCache,
   JUDGE_MODEL,
@@ -22,6 +28,15 @@ import {
   OVERRIDE_LABEL,
   SEMANTIC_BUILD_PREFIX,
 } from '../src/constants';
+
+// Octokit without write throttling or retries: throttling spaces writes at
+// least a second apart, which would make multi-event tests time out. A
+// function, so it applies after Probot merges in its own throttle options.
+const TestOctokit = ProbotOctokit.defaults((options: Record<string, unknown>) => ({
+  ...options,
+  throttle: { ...(options.throttle as object), enabled: false },
+  retry: { enabled: false },
+}));
 
 type PullRequestOpenedEvent = Context<'pull_request.opened'>['payload'];
 type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
@@ -49,26 +64,44 @@ const botLintComment = (id: number) => ({
 
 const expectStatus = (
   payload: { pull_request: { head: { sha: string } } },
-  state: 'success' | 'failure',
+  state: 'pending' | 'success' | 'failure' | 'error',
   description: string,
 ) =>
   nock(GH_API)
     .post(
       `/repos/electron/electron/statuses/${payload.pull_request.head.sha}`,
       (body: Record<string, string>) => {
+        // Pending statuses are handled by the catch-all mock in beforeEach.
+        if (body.state === 'pending') return false;
         expect(body).toMatchObject({ context: 'release-notes', description, state });
         return true;
       },
     )
     .reply(200);
 
+// Pending statuses posted on arrival, recorded by the catch-all mock below.
+const pendingStatuses: Record<string, string>[] = [];
+
 describe('probotRunner', () => {
   let probot: Probot;
 
   beforeEach(() => {
     nock.disableNetConnect();
+    pendingStatuses.length = 0;
+    // Open PRs are marked pending on arrival; the tests below check the final
+    // status, and 'marks the check pending' checks this one.
+    nock(GH_API)
+      .persist()
+      .post(/\/statuses\//, (body: Record<string, string>) => {
+        if (body.state !== 'pending') return false;
+        pendingStatuses.push(body);
+        return true;
+      })
+      .optionally()
+      .reply(200);
 
     probot = new Probot({
+      Octokit: TestOctokit,
       // ruby -rsecurerandom -e 'puts SecureRandom.hex(20)'
       privateKey: '9489ead8d9cb3566ba761a2c3dd278822f8d1205',
       appId: 690857,
@@ -218,6 +251,9 @@ describe('probotRunner', () => {
         user: {
           login: 'dependabot[bot]',
         },
+        head: { sha: 'abc123' },
+        state: 'open',
+        merged: false,
       },
       repository: {
         name: 'electron',
@@ -231,14 +267,16 @@ describe('probotRunner', () => {
         `/repos/electron/electron/pulls/${payload.pull_request.number}`,
         (body: Record<string, string>) => {
           expect(body).toMatchObject({
-            body: 'This is a test PR\n\n---\n\nNotes: none',
+            body: noteUtils.updatePRBodyForNoNotes(payload.pull_request.body),
           });
           return true;
         },
       )
       .reply(200);
+    expectStatus(payload, 'success', 'Release notes found');
 
     await deliver(probot, { id: '123', name: 'pull_request', payload });
+    expect(nock.isDone()).toBe(true);
   });
 
   it('should add "Notes: none" to build PR body', async () => {
@@ -251,6 +289,9 @@ describe('probotRunner', () => {
         title: `${SEMANTIC_BUILD_PREFIX} Build PR`,
         body: 'Fix something to do with GitHub Actions',
         user: { login: 'codebytere' },
+        head: { sha: 'abc123' },
+        state: 'open',
+        merged: false,
       },
       repository: {
         name: 'electron',
@@ -264,14 +305,16 @@ describe('probotRunner', () => {
         `/repos/electron/electron/pulls/${payload.pull_request.number}`,
         (body: Record<string, string>) => {
           expect(body).toMatchObject({
-            body: 'This is a test PR\n\n---\n\nNotes: none',
+            body: noteUtils.updatePRBodyForNoNotes(payload.pull_request.body),
           });
           return true;
         },
       )
       .reply(200);
+    expectStatus(payload, 'success', 'Release notes found');
 
     await deliver(probot, { id: '123', name: 'pull_request', payload });
+    expect(nock.isDone()).toBe(true);
   });
 
   it('should post a success status if release notes are found', async () => {
@@ -538,12 +581,36 @@ describe('probotRunner', () => {
 
     it('creates a single lint comment when two deliveries for one PR race', async () => {
       const payload = openPR();
+      let created: string | undefined;
 
-      // The second delivery arrives before the first has written anything, so
-      // the first leaves the write to it: one listing, one comment, one status.
+      // Whichever delivery writes first sees no comment and creates one. If the
+      // other also writes (it may instead find itself replaced by the newer
+      // delivery), it must wait, see the created comment and leave it alone.
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
-      nock(GH_API).post(COMMENTS_PATH).reply(201);
+      nock(GH_API)
+        .post(COMMENTS_PATH, (body: Record<string, string>) => {
+          expect(created).toBeUndefined();
+          created = body.body;
+          return true;
+        })
+        .reply(201);
+      nock(GH_API)
+        .get(COMMENTS_PATH)
+        .query(true)
+        .optionally()
+        .reply(200, () => {
+          expect(created).toBeDefined();
+          return [{ id: 8, body: created, user: BOT_USER }];
+        });
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
+      nock(GH_API)
+        .post(`/repos/electron/electron/statuses/${payload.pull_request.head.sha}`, {
+          context: 'release-notes',
+          description: 'Release notes need style fixes (see comment)',
+          state: 'failure',
+        })
+        .optionally()
+        .reply(200);
 
       await Promise.all([
         deliver(probot, { id: '123', name: 'pull_request', payload }),
@@ -740,6 +807,7 @@ describe('probotRunner', () => {
       create: T,
     ) => {
       probot = new Probot({
+        Octokit: TestOctokit,
         privateKey: '9489ead8d9cb3566ba761a2c3dd278822f8d1205',
         appId: 690857,
       });
@@ -969,6 +1037,47 @@ describe('probotRunner', () => {
       await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
+    });
+
+    it('marks the check pending until the review finishes', async () => {
+      const pending: ((message: ReviewMessage) => void)[] = [];
+      const create = loadWithClient(
+        vi.fn(() => new Promise<ReviewMessage>((resolve) => pending.push(resolve))),
+      );
+      const payload = openPR();
+      pullFetch(payload);
+      noExistingComments();
+      const done = expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      expect(pendingStatuses).toEqual([
+        expect.objectContaining({
+          state: 'pending',
+          context: 'release-notes',
+          description: CHECKING_DESCRIPTION,
+        }),
+      ]);
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
+      expect(done.isDone()).toBe(false);
+
+      for (const resolve of pending.splice(0)) {
+        resolve(claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] }));
+      }
+      await settleFeedback();
+      expect(nock.isDone()).toBe(true);
+    });
+
+    it('reports an error instead of leaving the check pending', async () => {
+      loadWithClient(
+        vi.fn(async () => claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] })),
+      );
+      const payload = openPR();
+      nock(GH_API).get(PULL_PATH).reply(404);
+      expectStatus(payload, 'error', ERROR_DESCRIPTION);
+
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
+      expect(nock.isDone()).toBe(true);
+      expect(pendingStatuses).toHaveLength(1);
     });
 
     it('acknowledges the webhook before the review finishes', async () => {

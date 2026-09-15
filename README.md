@@ -65,6 +65,12 @@ the description is edited. Bulleted notes are checked one bullet at a time.
 
 Bot-authored PRs (other than `claude[bot]`) and trop backports (`Backport of #...`) are not linted.
 
+While clerk checks an open PR, the `release-notes` status shows as pending
+(`Checking release notes…`) and then turns to success or failure; each event
+replaces the previous result, so a passing check fails again if the note
+regresses. If the check itself fails to run, the status is set to `error`, and
+editing or pushing to the PR runs it again.
+
 ## Claude review of the note
 
 Once a note has been through the style rules above, clerk can ask Claude about

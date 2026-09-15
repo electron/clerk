@@ -28,10 +28,16 @@ const debug = d('note-utils');
 
 type PullRequest = Context<'pull_request'>['payload']['pull_request'];
 
+export const CHECKING_DESCRIPTION = 'Checking release notes…';
+export const ERROR_DESCRIPTION = 'Release notes check failed to run; edit or push to retry';
+
+// The `release-notes` commit status. GitHub keeps one status per context and
+// commit, so each call replaces the last: an open PR's check goes to pending
+// when an event arrives and then to success, failure or error.
 const setStatus = (
   context: Context<'pull_request'>,
   pr: PullRequest,
-  state: 'success' | 'failure',
+  state: 'pending' | 'success' | 'failure' | 'error',
   description: string,
 ) =>
   context.octokit.rest.repos.createCommitStatus(
@@ -174,13 +180,11 @@ const submitFeedbackForPR = async (
   // persisting the first note rather than leaving no comment at all.
   if (!shouldComment && countNotesInPRBody(pr.body) > 1) {
     debug(`Multiple Notes: lines found: posting failed check.`);
-    await github.rest.repos.createCommitStatus(
-      context.repo({
-        state: 'failure' as 'failure',
-        sha: pr.head.sha,
-        description: 'Multiple Notes: lines; use one Notes: with a bulleted list',
-        context: 'release-notes',
-      }),
+    await setStatus(
+      context,
+      pr,
+      'failure',
+      'Multiple Notes: lines; use one Notes: with a bulleted list',
     );
     return;
   }
@@ -194,6 +198,7 @@ const submitFeedbackForPR = async (
           body: updatePRBodyForNoNotes(pr.body),
         }),
       );
+      await setStatus(context, pr, 'success', 'Release notes found');
       return;
     }
 
@@ -205,18 +210,12 @@ const submitFeedbackForPR = async (
           body: updatePRBodyForNoNotes(pr.body),
         }),
       );
+      await setStatus(context, pr, 'success', 'Release notes found');
       return;
     }
 
     debug(`No Release Notes: posting failed check.`);
-    await github.rest.repos.createCommitStatus(
-      context.repo({
-        state: 'failure' as 'failure',
-        sha: pr.head.sha,
-        description: 'Missing release notes',
-        context: 'release-notes',
-      }),
-    );
+    await setStatus(context, pr, 'failure', 'Missing release notes');
   } else {
     if (!shouldComment && shouldLintNote(pr, releaseNotes)) {
       const result = analyzeNote(releaseNotes, { labels, title: pr.title });
@@ -312,25 +311,43 @@ export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: P
       // webhook response, so the feedback runs after the handler returns and
       // the delivery is acknowledged straight away.
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
+      // Show the check as in progress right away. Every path below ends in a
+      // final status, except an event that a newer one replaces, and the newer
+      // event writes the final status then.
+      try {
+        await setStatus(context, pr, 'pending', CHECKING_DESCRIPTION);
+      } catch (err) {
+        context.log.error({ err }, `Could not mark ${repo}#${pr.number} as in progress`);
+      }
       const key = `${repo}#${pr.number}`;
       const seq = (latestEvent.get(key) ?? 0) + 1;
       latestEvent.set(key, seq);
-      serializePerPR(key, () =>
-        submitFeedbackForPR(
-          context,
-          pr,
-          reviewClient,
-          botLogin,
-          false,
-          () => latestEvent.get(key) !== seq,
-        ),
-      )
-        .catch((err) => {
+      serializePerPR(key, async () => {
+        try {
+          await submitFeedbackForPR(
+            context,
+            pr,
+            reviewClient,
+            botLogin,
+            false,
+            () => latestEvent.get(key) !== seq,
+          );
+        } catch (err) {
           context.log.error({ err }, `Release notes feedback failed for ${repo}#${pr.number}`);
-        })
-        .finally(() => {
-          if (latestEvent.get(key) === seq) latestEvent.delete(key);
-        });
+          // Do not leave the check pending. A newer event writes its own result.
+          if (latestEvent.get(key) !== seq) return;
+          try {
+            await setStatus(context, pr, 'error', ERROR_DESCRIPTION);
+          } catch (statusErr) {
+            context.log.error(
+              { err: statusErr },
+              `Could not report the error on ${repo}#${pr.number}`,
+            );
+          }
+        }
+      }).finally(() => {
+        if (latestEvent.get(key) === seq) latestEvent.delete(key);
+      });
     }
   });
 };
