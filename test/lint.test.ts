@@ -299,6 +299,13 @@ describe('lintNote', () => {
     expect(escapeProse('``a`` [x](y)')).toEqual('&#96;&#96;a&#96;&#96; \\[x\\](y)');
     expect(escapeProse('\\` [x](y) `')).toEqual('&#96; \\[x\\](y) &#96;');
     expect(escapeProse('`a` ` [x](y)')).toEqual('`a` &#96; \\[x\\](y)');
+    // Backticks are balanced per line, since GitHub never pairs them across blocks.
+    expect(escapeProse('a `b\n\n- c` [x](y) <b>')).toEqual(
+      'a &#96;b\n\n- c&#96; \\[x\\](y) &lt;b&gt;',
+    );
+    expect(escapeProse('see //evil.example/x and (//evil.example)')).toEqual(
+      `see /${Z}/evil.example/x and (/${Z}/evil.example)`,
+    );
   });
 
   it('leaves PascalCase product names alone', () => {

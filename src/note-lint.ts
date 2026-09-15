@@ -517,12 +517,15 @@ const normalizeBackticks = (text: string) => {
 const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
 
 // Prose in clerk's comments can quote the PR note or Claude's reasons, both of
-// which a fork PR controls. Outside code spans, `&` (so entities cannot spell
-// anything), HTML and markdown link brackets are escaped. Everywhere, autolinks,
-// @mentions and issue references are broken with a zero-width space, so nothing
-// in the comment links anywhere, loads anything or notifies anyone.
-export const escapeProse = (text: string) =>
-  mapOutsideCode(normalizeBackticks(text), (prose) =>
+// which a fork PR controls. Each line is handled on its own: GitHub never pairs
+// backticks across a block boundary, and a line with balanced backticks pairs
+// the same way whatever block it ends up in. Outside code spans, `&` (so
+// entities cannot spell anything), HTML and markdown link brackets are
+// escaped. Everywhere, autolinks, protocol-relative links, @mentions and issue
+// references are broken with a zero-width space, so nothing in the comment
+// links anywhere, loads anything or notifies anyone.
+const escapeProseLine = (line: string) =>
+  mapOutsideCode(normalizeBackticks(line), (prose) =>
     prose
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -531,10 +534,13 @@ export const escapeProse = (text: string) =>
   )
     .replaceAll(NEUTRAL_BACKTICK, '&#96;')
     .replace(/:\/\//g, `:${ZERO_WIDTH_SPACE}//`)
+    .replace(/(^|[\s"'=(])\/\/(?=[\w[])/g, `$1/${ZERO_WIDTH_SPACE}/`)
     .replace(/(www)\./gi, `$1${ZERO_WIDTH_SPACE}.`)
     .replace(/@(?=[\w-])/g, `@${ZERO_WIDTH_SPACE}`)
     // Not after `&`, which would break the entities written above.
     .replace(/(?<!&)#(?=\d)/g, `#${ZERO_WIDTH_SPACE}`);
+
+export const escapeProse = (text: string) => text.split('\n').map(escapeProseLine).join('\n');
 
 // A shorter rewrite from the Claude review, shown in place of the mechanical
 // fix when the note is over the length limit.
