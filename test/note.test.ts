@@ -148,6 +148,13 @@ describe('comment generation', () => {
     expect(isNoNotesNote('none of the windows closed (macOS)')).toBe(false);
   });
 
+  it('checks a long note with many spaces and parentheses quickly', () => {
+    const start = Date.now();
+    expect(isNoNotesNote(`none${' '.repeat(60_000)}(x`)).toBe(false);
+    expect(isNoNotesNote(`${'( '.repeat(30_000)})`)).toBe(false);
+    expect(Date.now() - start).toBeLessThan(500);
+  });
+
   it('shows a bulleted note that has a real item next to none', () => {
     const note = '* Fixed a crash.\n* none';
     expect(isNoNotesNote(note)).toBe(false);

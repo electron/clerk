@@ -263,6 +263,16 @@ describe('lintNote', () => {
     expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
   });
 
+  it('accepts an instruction bullet after the change it belongs to', () => {
+    const note = [
+      "* `getUserMedia` with `chromeMediaSource: 'desktop'` no longer accepts `WebContents` source ids.",
+      "* Use `chromeMediaSource: 'tab'` with `webContents.getMediaSourceId()` instead.",
+    ].join('\n');
+    expect(rules(note)).toEqual([]);
+    expect(rules('* Use `foo` instead of `bar`.\n* Fixed a crash.')).toEqual(['past-tense']);
+    expect(rules('Use `foo` instead of `bar`.')).toEqual(['past-tense']);
+  });
+
   it('uses "an" before a vowel when adding the article', () => {
     expect(analyzeNote('Fixed issue with window resizing.', ctx).fixed).toEqual(
       'Fixed an issue with window resizing.',

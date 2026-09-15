@@ -269,6 +269,12 @@ const submitFeedbackForPR = async (
   }
 };
 
+// Resolves once every queued feedback task has finished. Feedback for open PRs
+// runs after the webhook handler returns (see below), so tests await this.
+export const settleFeedback = async () => {
+  while (pendingFeedback.size > 0) await Promise.all(pendingFeedback.values());
+};
+
 // The Claude client is injected so tests can substitute a mock; the default
 // runner builds the real one once, at load, only when ANTHROPIC_API_KEY is set.
 export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: Probot) => {
@@ -281,11 +287,16 @@ export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: P
       debug(`Checking release notes comment on PR ${repo}#${pr.number}`);
       await submitFeedbackForPR(context, pr, reviewClient, botLogin, true);
     } else if (!pr.merged && pr.state === 'open') {
-      // Only submit feedback for PRs that aren't merged and are open
+      // Only submit feedback for PRs that aren't merged and are open. The
+      // Claude review can take minutes, far longer than GitHub waits for a
+      // webhook response, so the feedback runs after the handler returns and
+      // the delivery is acknowledged straight away.
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      await serializePerPR(`${repo}#${pr.number}`, () =>
+      serializePerPR(`${repo}#${pr.number}`, () =>
         submitFeedbackForPR(context, pr, reviewClient, botLogin),
-      );
+      ).catch((err) => {
+        context.log.error({ err }, `Release notes feedback failed for ${repo}#${pr.number}`);
+      });
     }
   });
 };

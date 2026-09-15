@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import nock from 'nock';
 import { type Context, Probot } from 'probot';
 
-import { createProbotRunner, probotRunner } from '../src/index';
+import { createProbotRunner, probotRunner, settleFeedback } from '../src/index';
 import {
   clearReviewCache,
   JUDGE_MODEL,
@@ -24,6 +24,13 @@ import {
 
 type PullRequestOpenedEvent = Context<'pull_request.opened'>['payload'];
 type PullRequestClosedEvent = Context<'pull_request.closed'>['payload'];
+
+// Feedback for open PRs runs after the webhook is acknowledged, so a test
+// delivery waits for that background work too.
+const deliver = async (probot: Probot, event: Parameters<Probot['receive']>[0]) => {
+  await probot.receive(event);
+  await settleFeedback();
+};
 
 const GH_API = 'https://api.github.com';
 const COMMENTS_PATH = '/repos/electron/electron/issues/1/comments';
@@ -110,7 +117,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
   });
 
   it('should post a failure status if there are multiple Notes: lines', async () => {
@@ -146,7 +153,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
     expect(nock.isDone()).toBe(true);
   });
 
@@ -194,7 +201,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
     expect(nock.isDone()).toBe(true);
   });
 
@@ -230,7 +237,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
   });
 
   it('should add "Notes: none" to build PR body', async () => {
@@ -263,7 +270,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
   });
 
   it('should post a success status if release notes are found', async () => {
@@ -290,7 +297,7 @@ describe('probotRunner', () => {
     nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
     expectStatus(payload, 'success', 'Release notes found');
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
     expect(nock.isDone()).toBe(true);
   });
 
@@ -343,7 +350,7 @@ describe('probotRunner', () => {
       )
       .reply(200);
 
-    await probot.receive({ id: '123', name: 'pull_request', payload });
+    await deliver(probot, { id: '123', name: 'pull_request', payload });
   });
 
   describe('release note style lint', () => {
@@ -382,7 +389,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -402,7 +409,7 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -429,7 +436,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -451,7 +458,7 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -470,7 +477,7 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -479,7 +486,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -489,7 +496,7 @@ describe('probotRunner', () => {
         noExistingComments();
         expectStatus(payload, 'success', 'Release notes found');
 
-        await probot.receive({ id: '123', name: 'pull_request', payload });
+        await deliver(probot, { id: '123', name: 'pull_request', payload });
         expect(nock.isDone(), body).toBe(true);
       }
     });
@@ -506,7 +513,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -524,7 +531,7 @@ describe('probotRunner', () => {
         })
         .reply(201);
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -553,8 +560,8 @@ describe('probotRunner', () => {
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
       await Promise.all([
-        probot.receive({ id: '123', name: 'pull_request', payload }),
-        probot.receive({ id: '124', name: 'pull_request', payload }),
+        deliver(probot, { id: '123', name: 'pull_request', payload }),
+        deliver(probot, { id: '124', name: 'pull_request', payload }),
       ]);
       expect(nock.isDone()).toBe(true);
     });
@@ -564,7 +571,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -579,7 +586,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -590,7 +597,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -599,7 +606,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -611,7 +618,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -630,7 +637,7 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -649,7 +656,7 @@ describe('probotRunner', () => {
         .reply(200);
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -667,7 +674,7 @@ describe('probotRunner', () => {
         })
         .reply(201);
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
   });
@@ -776,7 +783,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'success', REVIEW_STATUS_DESCRIPTION);
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
       const request = create.mock.calls[0][0];
@@ -797,7 +804,7 @@ describe('probotRunner', () => {
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
@@ -810,7 +817,7 @@ describe('probotRunner', () => {
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -821,7 +828,7 @@ describe('probotRunner', () => {
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -833,7 +840,7 @@ describe('probotRunner', () => {
       nock(GH_API).post(COMMENTS_PATH).reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).not.toHaveBeenCalled();
     });
@@ -848,7 +855,7 @@ describe('probotRunner', () => {
         const payload = openPR(overrides);
         noExistingComments();
         expectStatus(payload, 'success', 'Release notes found');
-        await probot.receive({ id: '123', name: 'pull_request', payload });
+        await deliver(probot, { id: '123', name: 'pull_request', payload });
       }
       expect(nock.isDone()).toBe(true);
       expect(create).not.toHaveBeenCalled();
@@ -885,7 +892,7 @@ describe('probotRunner', () => {
         .reply(201);
       expectStatus(payload, 'failure', 'Release notes need style fixes (see comment)');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
       expect(create.mock.calls[0][0].messages[0].content).toContain('over the 120-character limit');
@@ -901,7 +908,7 @@ describe('probotRunner', () => {
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       expectStatus(payload, 'success', 'Release notes found');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
     });
@@ -912,7 +919,7 @@ describe('probotRunner', () => {
       noExistingComments();
       expectStatus(payload, 'success', 'Release notes check overridden by label');
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).not.toHaveBeenCalled();
     });
@@ -928,7 +935,7 @@ describe('probotRunner', () => {
       nock(GH_API).get(COMMENTS_PATH).query(true).reply(200, []);
       nock(GH_API).post(COMMENTS_PATH).reply(201, { id: 8 });
       expectStatus(openPR(), 'success', REVIEW_STATUS_DESCRIPTION);
-      await probot.receive({ id: '1', name: 'pull_request', payload: openPR() });
+      await deliver(probot, { id: '1', name: 'pull_request', payload: openPR() });
 
       // Second push: the comment already exists with the same body, so it is
       // left alone, and the cached verdict means no second API call.
@@ -945,7 +952,7 @@ describe('probotRunner', () => {
         })
         .reply(200);
       expectStatus(second, 'success', REVIEW_STATUS_DESCRIPTION);
-      await probot.receive({ id: '2', name: 'pull_request', payload: second });
+      await deliver(probot, { id: '2', name: 'pull_request', payload: second });
 
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
@@ -963,9 +970,30 @@ describe('probotRunner', () => {
       // would be an unmatched request and fail the delivery.
       pullFetch(payload, { head: { sha: 'def456' } });
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
       expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES);
+    });
+
+    it('acknowledges the webhook before the review finishes', async () => {
+      const pending: ((message: ReviewMessage) => void)[] = [];
+      const create = loadWithClient(
+        vi.fn(() => new Promise<ReviewMessage>((resolve) => pending.push(resolve))),
+      );
+      const payload = openPR();
+      pullFetch(payload);
+      noExistingComments();
+      expectStatus(payload, 'success', 'Release notes found');
+
+      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
+      expect(nock.isDone()).toBe(false);
+
+      for (const resolve of pending.splice(0)) {
+        resolve(claudeReplies({ verdict: 'ok', suggestion: '', reasons: [] }));
+      }
+      await settleFeedback();
+      expect(nock.isDone()).toBe(true);
     });
 
     it('writes nothing when the PR description changed during the review', async () => {
@@ -976,7 +1004,7 @@ describe('probotRunner', () => {
 
       pullFetch(payload, { body: 'Fixes something broken\n\nNotes: Fixed the tray.\n' });
 
-      await probot.receive({ id: '123', name: 'pull_request', payload });
+      await deliver(probot, { id: '123', name: 'pull_request', payload });
       expect(nock.isDone()).toBe(true);
     });
 
@@ -1016,8 +1044,8 @@ describe('probotRunner', () => {
       expectStatus(second, 'failure', 'Release notes need style fixes (see comment)');
 
       const deliveries = Promise.all([
-        probot.receive({ id: '1', name: 'pull_request', payload: first }),
-        probot.receive({ id: '2', name: 'pull_request', payload: second }),
+        deliver(probot, { id: '1', name: 'pull_request', payload: first }),
+        deliver(probot, { id: '2', name: 'pull_request', payload: second }),
       ]);
       await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(REVIEW_CANDIDATES));
       finishReview({ verdict: 'suggest', suggestion: SUGGESTION, reasons: ['r'] });

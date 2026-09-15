@@ -254,7 +254,14 @@ const firstWord = (line: string) => /^([A-Za-z][\w-]*)/.exec(line)?.[1] ?? null;
 
 // Lints one line (a one-line note or a single bullet) and returns both the
 // findings and the line with every mechanical fix applied.
-const lintLine = (original: string): { findings: LintFinding[]; fixed: string } => {
+// A later bullet such as "Use `X` instead of `Y`." tells apps what to do about
+// the change above it; it is an instruction, not a change to put in past tense.
+const INSTRUCTION = /^(use|set|call|pass)\b.*\binstead\b/i;
+
+const lintLine = (
+  original: string,
+  { instruction = false } = {},
+): { findings: LintFinding[]; fixed: string } => {
   const findings: LintFinding[] = [];
   let line = original;
 
@@ -310,7 +317,7 @@ const lintLine = (original: string): { findings: LintFinding[]; fixed: string } 
   }
 
   const verb = firstWord(line);
-  const pastTense = verb && PAST_TENSE[verb.toLowerCase()];
+  const pastTense = verb && !instruction && PAST_TENSE[verb.toLowerCase()];
   if (pastTense) {
     line = pastTense + line.slice(verb.length);
     findings.push({
@@ -433,7 +440,7 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
       fixedItems.push(item);
       return;
     }
-    const result = lintLine(item);
+    const result = lintLine(item, { instruction: i > 0 && INSTRUCTION.test(item) });
     findings.push(...result.findings.map((f) => ({ ...f, message: prefix + f.message })));
     // Measured after the mechanical fixes (added backticks can push a line over).
     if (result.fixed.length > MAX_NOTE_LENGTH && !lengthExempt(result.fixed)) {

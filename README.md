@@ -112,9 +112,12 @@ How a review runs:
    accepted, nothing is posted.
 
 If a model's safety classifiers decline a request, the API reruns it on the
-fallback model it recommends (`fallbacks: "default"`). A review, including every
-call and SDK retry, is abandoned after 5 minutes and the note is treated as
-fine; API errors are logged and ignored the same way. If the PR is pushed to or
+fallback model it recommends (`fallbacks: "default"`). Clerk acknowledges the
+webhook first and runs the check and review afterwards, so a slow review never
+fails the delivery. A review, including every call and SDK retry, is abandoned
+after 5 minutes or 20 API calls and the note is treated as fine; API errors are
+logged and ignored the same way. At most four reviews run at once; an event that
+arrives while four are running skips the review. If the PR is pushed to or
 its description edited while the review is running, that result is discarded
 and the event for the newer change posts its own. Only the note, the PR title
 (without its `fix:`-style prefix) and the labels are sent, never the PR body or
@@ -123,8 +126,8 @@ that do not touch the description do not call the API again.
 
 To enable it, set `ANTHROPIC_API_KEY` on the Heroku app; without it this step
 is skipped. The key's organization must allow Claude Fable 5.1 (it requires
-30-day data retention). A review makes four to eight calls (three candidates, then
-one to three judge calls with a revision before each retry).
+30-day data retention). A review usually makes three to nine calls (three candidates, then
+up to a few judge calls with a revision before each retry).
 
 ## Overriding the check
 

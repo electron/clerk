@@ -53,6 +53,10 @@ export const REVIEW_TARGET_LENGTH = MAX_NOTE_LENGTH - 20;
 // Total time a review may take, across every call and SDK retry. reviewNote
 // gives up (as "ok") when this elapses even if a request has not settled yet.
 export const REVIEW_TIMEOUT_MS = 5 * 60_000;
+// Hard caps that do not depend on the note: API calls per review, and reviews
+// running at once across all PRs. A review that would exceed either is skipped.
+export const REVIEW_MAX_CALLS = 20;
+export const REVIEW_MAX_CONCURRENT = 4;
 export const REVIEW_CACHE_SIZE = 500;
 export const REVIEW_STATUS_DESCRIPTION = 'Release notes found (suggestion posted)';
 
@@ -182,7 +186,7 @@ When you rewrite, keep:
 What you may drop: how the fix works, internal file, class or function names, root causes, and examples of affected apps or sites.
 Never add what the note and PR title do not say: no new APIs, platforms, causes, scope or severity (such as "security" or "hang").
 Use bullets only when the note describes changes that could each be a release note of their own. One change may use bullets only for an instruction or a new behaviour apps must act on (for example an API that now throws), or for cases with different conditions or triggers that cannot share one sentence of at most ${MAX_NOTE_LENGTH} characters; each such bullet repeats the platform and every condition it depends on. Never split one change into bullets just to keep a list of names: use an exact group name ("\`fs.readdir\`, \`fs.glob\` and their sync variants") or name the main ones and list the rest in the reasons. A change and its effect, a symptom and its cause, a new module and what it enables, and a deprecation and its replacement stay in one sentence; if that sentence is too long, drop the cause or the mechanism, not the symptom. When deprecated or removed names each map obviously to a replacement, a group name can cover them ("Deprecated the synchronous \`crypto\` hashing methods in favor of their async variants."); otherwise give the replacement its own bullet as an instruction.
-When not everything fits even then, drop in this order: examples, how it works, secondary wording, secondary triggers when the main one is kept, then names the note mentions only in passing, and say what you dropped in the reasons; never the kind of change, an instruction or new behaviour apps must act on, the main subject (the thing the note is about, such as "custom V8 snapshots", even when you keep a more specific name), or the condition that decides who is affected. Each bullet must say something the others do not and make sense on its own, without "they", "the same", "such" or "also" pointing at another bullet; the bullets together should not be longer than the original. Several triggers of one fix belong in one sentence when they fit.
+When not everything fits even then, drop in this order: examples, how it works, secondary wording, secondary triggers when the main one is kept, then names the note mentions only in passing, and say what you dropped in the reasons; never the kind of change, an instruction or new behaviour apps must act on, the main subject (the thing the note is about, such as "custom V8 snapshots", even when you keep a more specific name), or the condition that decides who is affected. Each bullet must say something the others do not and make sense on its own, read alone in a list of unrelated notes: no "they", "the same", "such", "also" or "instead" pointing at another bullet, and an instruction bullet says what it is for ("To capture a \`WebContents\`, use ..." or "Use \`X\` instead of \`Y\` to ...", not "Instead, use ..." or "Apps must now use ..."). If a standalone instruction does not fit, drop a secondary alternative from it and name it in the reasons rather than lean on the other bullet. The bullets together should not be longer than the original. Several triggers of one fix belong in one sentence when they fit.
 Keep technical terms exactly as the author wrote them ("CSS environment variables" are not "CSS variables"), and keep the direction of any comparison ("aligning with X" means it now behaves like X).
 Write plainly: when a change applies only while something is absent, say "when no X is registered" rather than a bare "without X" that could attach to the wrong verb, and keep the author's wording when it is already clear; describe what was broken before the fix, not its consequence as if it still happens (not "Fixed X, so Y was Z", which reads as the fix causing Y; write "Fixed Y being Z when X" or "Fixed X, which caused Y"); never start a sentence or bullet with "Windows" unless you mean the platform (write "New windows" for browser windows); capitalize platform names (Windows, macOS, Linux).
 
@@ -256,10 +260,10 @@ A rewrite is acceptable only if all of these hold:
 4. It keeps the symptom users see and any behaviour change or instruction apps must act on ("use X instead").
 5. It describes the same kind of change as the original (a fix stays a fix, a behaviour change stays a behaviour change).
 6. It says the right thing: a fix describes what was broken, not the correct behaviour; comparisons keep their direction ("aligning with X" is not "unlike X"); technical terms are not swapped for similar-sounding ones; names keep the author's casing and form ("Clone" is not \`clone()\`), and a rewrite must not replace the note's API name with a different one from the title (when the title writes a different API as code, the right response is an [ask], which is acceptable even though the title names an API); an instruction keeps what it achieves ("set X to get Y" is not "set X to opt out").
-7. It reads as a plain, natural headline, not cramped, telegraphic or ambiguous ("without X" where "when no X" is meant; a line starting with "Windows" that means browser windows; a consequence stated as if it still happens, such as "Fixed X, so Y was Z"). Bullets are used only for changes that could each be a release note of their own, or, within one change, for an instruction or new behaviour apps must act on or for cases with different conditions or triggers that cannot share one sentence of at most ${MAX_NOTE_LENGTH} characters; each such bullet repeats every condition it depends on. Splitting one change just to keep more names, or putting a symptom and its cause, a fix and its effect, a new module and what it enables, or a deprecation and its replacement in separate bullets, is a problem. Each bullet makes sense on its own, and no bullet restates another.
+7. It reads as a plain, natural headline, not cramped, telegraphic or ambiguous ("without X" where "when no X" is meant; a line starting with "Windows" that means browser windows; a consequence stated as if it still happens, such as "Fixed X, so Y was Z"). Bullets are used only for changes that could each be a release note of their own, or, within one change, for an instruction or new behaviour apps must act on or for cases with different conditions or triggers that cannot share one sentence of at most ${MAX_NOTE_LENGTH} characters; each such bullet repeats every condition it depends on. Splitting one change just to keep more names, or putting a symptom and its cause, a fix and its effect, a new module and what it enables, or a deprecation and its replacement in separate bullets, is a problem. Each bullet makes sense on its own, read alone in a list of unrelated notes, and no bullet restates another: a bullet that only makes sense after another one ("Instead, use ...", "Apps must now use X" without saying what X is for, "This also ...") is a problem, even if it keeps more names.
 8. Its reasons, if any, are accurate. Missing reasons are not a problem by themselves; reasons that mention the character limit are removed before posting.
 A candidate starting with "[ask]" does not rewrite the note but asks the author something. It is acceptable only if the note really has one of the problems listed below that cannot be fixed from the note and title, and it says specifically what to add or change. A question asking a test or ci PR (see the PR type line) to use \`Notes: none\` is always acceptable, whatever the semver label, and a rewrite of such a note is not worth posting. It is never acceptable for a note over the limit.
-A behaviour change or deprecation followed by a bullet with the instruction or replacement is not a split when the combined sentence would exceed the limit, and a group name for replacements is fine when each old name maps obviously to one ("in favor of their async variants").
+A behaviour change or deprecation followed by a standalone bullet with the instruction or replacement ("To capture a \`WebContents\`, use ...") is not a split when the combined sentence would exceed the limit; dropping a secondary alternative so that bullet can stand alone is acceptable when the reasons name it, and a group name for replacements is fine when each old name maps obviously to one ("in favor of their async variants").
 A note over the limit often cannot keep everything. Then a candidate is acceptable if it drops only lower-priority content (examples, how it works, secondary wording, secondary triggers when the main one is kept, names mentioned in passing), says in its reasons what it dropped, and keeps the kind of change, any instruction or new behaviour apps must act on, the main subject (what the note is about, not just a more specific name) and the condition that decides who is affected. Judge whether its choice of what to keep is sensible, not whether it kept everything; only a problem you could fix within the limit counts.
 Word choice you would merely have made differently is not a problem. Each problem must quote the words concerned and say what is wrong or missing. When several candidates are acceptable, pick the plainest and shortest one that keeps everything required. When none is acceptable, write your own corrected version in fix; it will be checked again before it is used. Count the characters: every sentence or bullet in fix must be at most ${MAX_NOTE_LENGTH} characters, so use bullets as allowed above when one sentence cannot hold what is required.
 
@@ -560,6 +564,9 @@ const remember = (key: string, result: ReviewResult) => {
 };
 
 class ReviewTimeout extends Error {}
+class ReviewBudgetExceeded extends Error {}
+
+let activeReviews = 0;
 
 // Rejects with ReviewTimeout when the promise has not settled by `deadline`.
 // The promise itself keeps running; its late result is ignored.
@@ -640,6 +647,7 @@ export const reviewNote = async (
   input: ReviewInput,
   client: ReviewClient,
   trace?: ReviewTraceEntry[],
+  { maxCalls = REVIEW_MAX_CALLS } = {},
 ): Promise<ReviewResult> => {
   const key = reviewCacheKey(input);
   const cached = cache.get(key);
@@ -648,10 +656,19 @@ export const reviewNote = async (
     return cached;
   }
 
+  if (activeReviews >= REVIEW_MAX_CONCURRENT) {
+    debug(`${activeReviews} Claude reviews already running: skipping this one`);
+    trace?.push({ step: 'result', result: OK, reason: 'too many concurrent reviews' });
+    return OK;
+  }
+
   const deadline = Date.now() + REVIEW_TIMEOUT_MS;
   const overLimit = exceedsNoteLength(input.note);
-  const create = (params: ReviewRequest) =>
-    beforeDeadline(client.beta.messages.create(params), deadline);
+  let calls = 0;
+  const create = (params: ReviewRequest) => {
+    if (++calls > maxCalls) return Promise.reject(new ReviewBudgetExceeded());
+    return beforeDeadline(client.beta.messages.create(params), deadline);
+  };
   const finish = (result: ReviewResult, reason: string, cacheable = true) => {
     trace?.push({ step: 'result', result, reason });
     debug(`Review result: ${result.verdict} (${reason})`);
@@ -659,6 +676,7 @@ export const reviewNote = async (
     return result;
   };
 
+  activeReviews++;
   try {
     const initial = buildReviewRequest(input);
     const messages = await Promise.all(
@@ -773,6 +791,8 @@ export const reviewNote = async (
   } catch (error) {
     if (error instanceof ReviewTimeout) {
       debug(`Claude review did not finish within ${REVIEW_TIMEOUT_MS}ms: treating as ok`);
+    } else if (error instanceof ReviewBudgetExceeded) {
+      debug(`Claude review needed more than ${maxCalls} calls: treating as ok`);
     } else if (error instanceof Anthropic.APIError) {
       debug(`Claude API error ${error.status ?? ''}: ${error.message}`);
     } else {
@@ -780,6 +800,8 @@ export const reviewNote = async (
     }
     trace?.push({ step: 'result', result: OK, reason: 'error' });
     return OK;
+  } finally {
+    activeReviews--;
   }
 };
 

@@ -97,7 +97,14 @@ const OMIT_FROM_RELEASE_NOTES_KEYS = [
 ];
 
 // `none (reverts an unreleased change)`: a synonym followed only by a reason.
-const WITH_REASON = /^(.*?)\s*\([^()]*\)\.?$/;
+// Strips one trailing parenthetical without a regex, so a long body cannot
+// cause backtracking.
+const withoutReason = (item: string) => {
+  const end = item.endsWith(').') ? item.length - 2 : item.endsWith(')') ? item.length - 1 : -1;
+  const open = end > 0 ? item.lastIndexOf('(', end) : -1;
+  if (open <= 0 || item.slice(open + 1, end).includes(')')) return item;
+  return item.slice(0, open).trimEnd();
+};
 
 // True for the `none` synonyms that mean "this change has no release note".
 // The synonym may be written as a single bullet (`Notes:\n* none`), so a
@@ -109,7 +116,7 @@ export const isNoNotesNote = (note: string) => {
     .map((line) => line.trim().replace(/^[*-]\s*/, ''))
     .filter((line) => line !== '');
   if (items.length !== 1) return false;
-  const bare = items[0].replace(WITH_REASON, '$1');
+  const bare = withoutReason(items[0]);
   return OMIT_FROM_RELEASE_NOTES_KEYS.some((rx) => rx.test(items[0]) || rx.test(bare));
 };
 

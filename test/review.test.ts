@@ -19,6 +19,8 @@ import {
   REVIEW_CANDIDATES,
   REVIEW_MAX_ROUNDS,
   REVIEW_MAX_ROUNDS_OVER_LIMIT,
+  REVIEW_MAX_CALLS,
+  REVIEW_MAX_CONCURRENT,
   REVIEW_MAX_TOKENS,
   REVIEW_MODEL,
   REVIEW_SCHEMA,
@@ -366,6 +368,46 @@ describe('reviewNote', () => {
     const content = buildReviewRequest(note).messages[0].content as string;
     expect(content).toContain('This is a backport note');
     expect(content).not.toContain('character limit and fails');
+  });
+
+  it('skips a review when too many are already running', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow = vi.fn<Create>(async () => {
+      await gate;
+      return ok;
+    });
+    const slowClient = { beta: { messages: { create: slow } } } as ReviewClient;
+    const running = Array.from({ length: REVIEW_MAX_CONCURRENT }, (_, i) =>
+      reviewNote({ ...input, note: `Fixed crash ${i}.` }, slowClient),
+    );
+    const { client, create } = routedClient([suggest(GOOD)], [accept()]);
+    await expect(reviewNote(input, client)).resolves.toEqual({ verdict: 'ok', reasons: [] });
+    expect(create).not.toHaveBeenCalled();
+    release();
+    await Promise.all(running);
+    await expect(reviewNote(input, client)).resolves.toMatchObject({ suggestion: GOOD });
+  });
+
+  it('stops a review that needs more than the call budget', async () => {
+    // Every draw is different and the judge rejects them all.
+    let n = 0;
+    const create = vi.fn<Create>((params) =>
+      Promise.resolve(
+        params.model === JUDGE_MODEL
+          ? reject('no')
+          : suggest(`Fixed crash number ${++n} in the tray.`),
+      ),
+    );
+    const client = { beta: { messages: { create } } } as ReviewClient;
+    // The round limits keep a real review well under REVIEW_MAX_CALLS; the cap
+    // is a backstop, so check it with a lower one.
+    expect(REVIEW_MAX_CALLS).toBeGreaterThanOrEqual(3 * REVIEW_CANDIDATES);
+    await expect(reviewNote(long, client, undefined, { maxCalls: 4 })).resolves.toEqual({
+      verdict: 'ok',
+      reasons: [],
+    });
+    expect(create).toHaveBeenCalledTimes(4);
   });
 
   it('returns ok without judging when no candidate finds anything wrong', async () => {
