@@ -839,6 +839,9 @@ describe('createReviewCommentBody for a question', () => {
     const body = createReviewCommentBody({ verdict: 'ask', reasons: ['Say what breaks.'] });
     expect(body).toContain(LINT_COMMENT_MARKER);
     expect(body).toContain('**Release note needs more detail (advisory)**');
+    expect(body).toMatch(
+      /This question was generated automatically, so use your best judgment\. This comment will update as the PR description is edited\.$/,
+    );
     expect(body).toContain('- Say what breaks.');
     expect(body).not.toContain('```');
   });
@@ -853,6 +856,13 @@ describe('createReviewCommentBody', () => {
     });
     expect(body.startsWith(LINT_COMMENT_MARKER)).toBe(true);
     expect(body).toContain('**Suggested release note (advisory)**');
+    expect(body).toContain(
+      'Claude reviewed it for how it reads to app developers and suggests this rewrite:\n',
+    );
+    expect(body).toMatch(
+      /This suggestion was generated automatically, so use your best judgment\. This comment will update as the PR description is edited\.$/,
+    );
+    expect(body).not.toContain('take it or leave it');
     expect(body).toContain('```\nNotes: Fixed a use-after-free crash in the tray.\n```');
     expect(body).toContain('- UAF is internal jargon.');
     expect(body).toContain('- Say when it happens for &lt;webview&gt; users.');
