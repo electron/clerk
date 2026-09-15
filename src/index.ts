@@ -65,12 +65,14 @@ const getBotLogin = (app: Probot) => {
 };
 
 // Feedback for one PR is serialised: two webhook deliveries for the same PR
-// that arrive together (a redelivery, a quick double edit, or a push while an
-// earlier event still waits on the Claude review) would otherwise interleave
-// their reads and writes. Both could list the comments before either has
-// created one and each would create its own; or the newer push's failing
-// comment could be posted first and then marked resolved by the older, slower
-// event. The second call waits for the first to finish entirely.
+// that arrive together (a redelivery, or a quick double edit) would otherwise
+// interleave their reads and writes: both could list the comments before
+// either has created one, and each would create its own. The second call
+// waits for the first to finish. Only fast work is queued (the deterministic
+// checks and the GitHub writes); the Claude review runs outside the queue, see
+// reviewInBackground, so a webhook response never waits on it.
+const feedbackKey = (context: Context<'pull_request'>) =>
+  `${context.payload.repository.full_name}#${context.payload.pull_request.number}`;
 const pendingFeedback = new Map<string, Promise<void>>();
 const serializePerPR = <T>(key: string, task: () => Promise<T>): Promise<T> => {
   const previous = pendingFeedback.get(key) ?? Promise.resolve();
@@ -86,6 +88,29 @@ const serializePerPR = <T>(key: string, task: () => Promise<T>): Promise<T> => {
   });
   pendingFeedback.set(key, tracked);
   return run;
+};
+
+// Claude reviews still running, per PR. An event that reaches the queue marks
+// the reviews started by earlier events for the same PR superseded, and a
+// superseded review drops its result unwritten: the latest event wins, and a
+// burst of pushes never piles up writes behind their reviews.
+const reviewsInFlight = new Map<string, Set<{ superseded: boolean }>>();
+const supersedeReviews = (key: string) =>
+  reviewsInFlight.get(key)?.forEach((review) => (review.superseded = true));
+
+// Work that outlives the webhook response. Errors are logged, never left
+// unhandled; waitForIdle lets tests await the writes that follow a review.
+const detached = new Set<Promise<void>>();
+const detach = (context: Context<'pull_request'>, work: Promise<void>) => {
+  const tracked: Promise<void> = work
+    .catch((err) => context.log.error(err, 'Release note review failed'))
+    .then(() => {
+      detached.delete(tracked);
+    });
+  detached.add(tracked);
+};
+export const waitForIdle = async () => {
+  while (detached.size > 0) await Promise.all(detached);
 };
 
 // Posts or updates the single clerk-owned lint comment on a PR. The comment is
@@ -127,10 +152,57 @@ const upsertLintComment = async (
 // The Claude review can take seconds. A push or description edit in that time
 // makes the event's snapshot of the PR stale, and the event for that change
 // posts its own result; writing from the stale snapshot could resolve the newer
-// event's failing comment or set a status for the wrong head.
+// event's failing comment or set a status for the wrong head. A merge or close
+// leaves the head and body alone, so the state is checked as well.
 const isPRUnchanged = async (context: Context<'pull_request'>, pr: PullRequest) => {
   const { data } = await context.octokit.rest.pulls.get(context.repo({ pull_number: pr.number }));
-  return data.head.sha === pr.head.sha && (data.body ?? '') === (pr.body ?? '');
+  return (
+    data.state === 'open' && data.head.sha === pr.head.sha && (data.body ?? '') === (pr.body ?? '')
+  );
+};
+
+// Asks Claude about a note that passed the style rules and, once it answers,
+// posts the comment and status for the event. The webhook handler does not
+// await this; the write goes back through the per-PR queue and is skipped when
+// a newer event has arrived or the PR moved on in the meantime.
+const reviewInBackground = async (
+  context: Context<'pull_request'>,
+  pr: PullRequest,
+  note: string,
+  labels: string[],
+  reviewClient: ReviewClient,
+  botLogin: string,
+) => {
+  const key = feedbackKey(context);
+  const handle = { superseded: false };
+  const inFlight = reviewsInFlight.get(key) ?? new Set<{ superseded: boolean }>();
+  inFlight.add(handle);
+  reviewsInFlight.set(key, inFlight);
+  try {
+    const review = await reviewNote({ note, title: pr.title, labels }, reviewClient);
+    await serializePerPR(key, async () => {
+      if (handle.superseded) {
+        debug(`A newer event arrived during the Claude review: leaving the write to it.`);
+        return;
+      }
+      if (!(await isPRUnchanged(context, pr))) {
+        debug(`PR changed during the Claude review: leaving the write to the newer event.`);
+        return;
+      }
+      if (review.verdict === 'suggest') {
+        debug(`Claude suggested a release note rewrite: posting advisory comment.`);
+        await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
+        await setStatus(context, pr, 'success', REVIEW_STATUS_DESCRIPTION);
+        return;
+      }
+      await upsertLintComment(context, pr, null, botLogin);
+      debug(`Release Notes found: posting successful check.`);
+      await setStatus(context, pr, 'success', 'Release notes found');
+    });
+  } finally {
+    inFlight.delete(handle);
+    if (inFlight.size === 0 && reviewsInFlight.get(key) === inFlight) reviewsInFlight.delete(key);
+  }
 };
 
 const submitFeedbackForPR = async (
@@ -212,18 +284,14 @@ const submitFeedbackForPR = async (
       }
 
       // The style rules pass; optionally ask Claude whether the note tells app
-      // developers what changed. Advisory only: the status stays green.
-      const review = reviewClient
-        ? await reviewNote({ note: releaseNotes, title: pr.title, labels }, reviewClient)
-        : null;
-      if (reviewClient && !(await isPRUnchanged(context, pr))) {
-        debug(`PR changed during the Claude review: leaving the write to the newer event.`);
-        return;
-      }
-      if (review?.verdict === 'suggest') {
-        debug(`Claude suggested a release note rewrite: posting advisory comment.`);
-        await upsertLintComment(context, pr, createReviewCommentBody(review), botLogin);
-        await setStatus(context, pr, 'success', REVIEW_STATUS_DESCRIPTION);
+      // developers what changed. Advisory only: the status stays green. The
+      // review takes seconds, so it runs off the webhook response and posts
+      // the comment and status itself when it returns.
+      if (reviewClient) {
+        detach(
+          context,
+          reviewInBackground(context, pr, releaseNotes, labels, reviewClient, botLogin),
+        );
         return;
       }
       await upsertLintComment(context, pr, null, botLogin);
@@ -262,9 +330,12 @@ export const createProbotRunner = (reviewClient: ReviewClient | null) => (app: P
     } else if (!pr.merged && pr.state === 'open') {
       // Only submit feedback for PRs that aren't merged and are open
       debug(`Checking & posting release notes comment on PR ${repo}#${pr.number}`);
-      await serializePerPR(`${repo}#${pr.number}`, () =>
-        submitFeedbackForPR(context, pr, reviewClient, botLogin),
-      );
+      const key = feedbackKey(context);
+      await serializePerPR(key, () => {
+        // Whatever an earlier event is still asking Claude about is now stale.
+        supersedeReviews(key);
+        return submitFeedbackForPR(context, pr, reviewClient, botLogin);
+      });
     }
   });
 };

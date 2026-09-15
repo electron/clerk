@@ -75,12 +75,13 @@ When Claude has a rewrite, clerk posts it (with one to three short reasons) in
 the same comment the style lint uses. This is advisory only: the
 `release-notes` status stays green (`Release notes found (suggestion posted)`),
 and any API error or timeout is logged and ignored. The review is one request
-with no retries and a hard 15-second deadline, so it adds at most 15 seconds
-to handling a push or description edit; past the deadline the note is treated
-as fine and nothing is posted. If the PR is pushed to or its description edited
-while the review is running, that result is discarded and the event for the
-newer change posts its own. Only the note, the PR title and the labels are
-sent, never the PR body or diff. Complete verdicts are cached in memory by
+with no retries and a hard 15-second deadline; past the deadline the note is
+treated as fine and nothing is posted. It runs in the background: the webhook
+is acknowledged immediately and the comment and status follow once Claude
+answers. If the PR is pushed to, its description edited or it is closed while
+the review is running, that result is discarded: only the newest event for a
+PR writes. Only the note, the PR title and the labels are sent, never the PR
+body or diff. Complete verdicts are cached in memory by
 note, title and labels so pushes that do not touch the description do not call
 the API again.
 
