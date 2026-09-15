@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeNote,
   createLintCommentBody,
+  escapeProse,
   exceedsNoteLength,
   isSecurityBackportNote,
   lintNote,
@@ -263,6 +264,19 @@ describe('lintNote', () => {
     expect(isSecurityBackportNote('Fixed a backported regression.')).toBe(false);
   });
 
+  it('keeps links, images and mentions in comment prose inert', () => {
+    expect(
+      escapeProse('See [docs](https://evil.example/x) and ![p](https://t.example/p.png).'),
+    ).toEqual('See \\[docs\\](`https://evil.example/x`) and !\\[p\\](`https://t.example/p.png`).');
+    expect(escapeProse('Ask @someone or @electron/wg-releases, not a@b.com.')).toEqual(
+      'Ask `@someone` or `@electron/wg-releases`, not a@b.com.',
+    );
+    expect(escapeProse('Visit www.evil.example, or `https://ok.example` in code.')).toEqual(
+      'Visit `www.evil.example`, or `https://ok.example` in code.',
+    );
+    expect(escapeProse('<img src=x>')).toEqual('&lt;img src=x&gt;');
+  });
+
   it('leaves PascalCase product names alone', () => {
     expect(rules('Fixed sharing links to WhatsApp, OneDrive and PowerPoint.')).toEqual([]);
   });
@@ -292,6 +306,11 @@ describe('lintNote', () => {
     ].join('\n');
     expect(rules(note)).toEqual([]);
     expect(rules('* Removed `foo()`.\n* Enable `bar` instead.')).toEqual([]);
+    expect(rules('* Removed `foo()`.\n* Enable the sandbox flag to prevent this.')).toEqual([]);
+    expect(rules('* Removed `foo()`.\n* Uses the new engine instead of polling.')).toEqual([
+      'past-tense',
+    ]);
+    expect(rules('* Removed `foo()`.\n* Enable the new tray.')).toEqual(['past-tense']);
     expect(rules('* Use `foo` instead of `bar`.\n* Fixed a crash.')).toEqual(['past-tense']);
     expect(rules('Use `foo` instead of `bar`.')).toEqual(['past-tense']);
   });

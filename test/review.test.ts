@@ -6,7 +6,9 @@ import {
   buildReviewRequest,
   clearReviewCache,
   createReviewClient,
+  droppedIds,
   droppedNames,
+  findReviewProblems,
   createReviewCommentBody,
   interpretReviewResponse,
   parseReviewResponse,
@@ -273,6 +275,7 @@ describe('interpretJudgeResponse', () => {
       problems: [['Drops "on macOS".'], []],
       fix: '',
       fixReasons: [],
+      fixKind: null,
     });
   });
 
@@ -344,7 +347,7 @@ describe('reviewNote', () => {
   const GOOD = 'Fixed a crash in the tray.';
   // How a rewrite with the default reasons is shown to the judge.
   const shown = (text: string) =>
-    `${text}\n\nReasons: r\nBackticked names from the note it leaves out: (none)`;
+    `${text}\n\nReasons: r\nBackticked names and bug IDs from the note it leaves out: (none)`;
   const ask = (...reasons: string[]) =>
     jsonMessage({ verdict: 'ask', suggestion: '', reasons, ...kinds('fix') });
   const long = { ...input, note: `Fixed a crash in the tray${'!'.repeat(MAX_NOTE_LENGTH)}.` };
@@ -410,6 +413,28 @@ describe('reviewNote', () => {
     await expect(reviewNote(input, client)).resolves.toMatchObject({ suggestion: GOOD });
     const secondJudge = calls(JUDGE_MODEL)[1][0].messages[0].content as string;
     expect(secondJudge).not.toContain('<candidate 2>');
+  });
+
+  it('does not use a judge fix that changes the kind of change', async () => {
+    const { client, calls } = routedClient(
+      [suggest(GOOD)],
+      [
+        jsonMessage({
+          assessments: [{ candidate: 1, problems: ['p'] }],
+          best: 0,
+          closest: 1,
+          worth_posting: true,
+          fix: 'Added a crash handler to the tray.',
+          fix_kind: 'addition',
+          fix_reasons: [],
+        }),
+        accept(1),
+      ],
+    );
+    await expect(reviewNote(input, client)).resolves.toMatchObject({ suggestion: GOOD });
+    const secondJudge = calls(JUDGE_MODEL)[1][0].messages[0].content as string;
+    expect(secondJudge).not.toContain('Added a crash handler to the tray.');
+    expect(JUDGE_SCHEMA.required).toContain('fix_kind');
   });
 
   it('skips a review when too many are already running', async () => {
@@ -552,6 +577,28 @@ describe('reviewNote', () => {
 
   it('lists the backticked names a rewrite leaves out', () => {
     expect(droppedNames('Fixed `a.b()` and `c` with `d`.', 'Fixed `a.b()`.')).toEqual(['c', 'd']);
+    expect(
+      droppedIds(
+        'Backported fixes for CVE-2026-1234, CVE-2026-1235 and 4912345.',
+        'Backported fixes for cve-2026-1234.',
+      ),
+    ).toEqual(['CVE-2026-1235', '4912345']);
+    expect(droppedIds('Updated Chromium to 134.0.6998.23.', 'Updated Chromium.')).toEqual([]);
+    const backport = { ...input, note: 'Backported fixes for CVE-2026-1234 and CVE-2026-1235.' };
+    const silentDrop = findReviewProblems(
+      {
+        result: {
+          verdict: 'suggest',
+          suggestion: 'Backported fixes for CVE-2026-1234.',
+          reasons: ['Fixed the grammar.'],
+        },
+        complete: true,
+        noteKind: 'fix',
+        suggestionKind: 'fix',
+      },
+      backport,
+    );
+    expect(silentDrop.join(' ')).toContain('CVE-2026-1235');
     expect(droppedNames('Fixed `app.quit()` on `macOS`.', 'Fixed app.quit() on macOS.')).toEqual(
       [],
     );

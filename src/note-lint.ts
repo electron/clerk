@@ -258,9 +258,16 @@ const firstWord = (line: string) => /^([A-Za-z][\w-]*)/.exec(line)?.[1] ?? null;
 
 // Lints one line (a one-line note or a single bullet) and returns both the
 // findings and the line with every mechanical fix applied.
-// A later bullet such as "Use `X` instead of `Y`." tells apps what to do about
-// the change above it; it is an instruction, not a change to put in past tense.
-const INSTRUCTION = /^\w+\b.*\binstead\b/i;
+// A later bullet such as "Use `X` instead of `Y`." or "Enable `X` to prevent
+// this." tells apps what to do about the change above it; it is an
+// instruction, not a change to put in past tense. It starts with an
+// instruction verb in its base form ("Uses ..." is a change) and reads like an
+// instruction.
+const INSTRUCTION_VERB =
+  /^(?:use|set|call|pass|enable|disable|switch|migrate|opt|listen|await|keep)\b/i;
+const INSTRUCTION_CUE =
+  /\b(?:instead|to (?:keep|restore|prevent|avoid|opt|get|continue|use)|if (?:you|your))\b/i;
+const isInstruction = (item: string) => INSTRUCTION_VERB.test(item) && INSTRUCTION_CUE.test(item);
 
 const lintLine = (
   original: string,
@@ -447,7 +454,7 @@ export const analyzeNote = (note: string, ctx: LintContext): LintResult => {
       fixedItems.push(item);
       return;
     }
-    const result = lintLine(item, { instruction: i > 0 && INSTRUCTION.test(item) });
+    const result = lintLine(item, { instruction: i > 0 && isInstruction(item) });
     findings.push(...result.findings.map((f) => ({ ...f, message: prefix + f.message })));
     // Measured after the mechanical fixes (added backticks can push a line over).
     if (result.fixed.length > MAX_NOTE_LENGTH && !lengthExempt(result.fixed)) {
@@ -490,8 +497,22 @@ export const lintNote = (note: string, ctx: LintContext): LintFinding[] =>
 
 // Escapes angle brackets outside backticks so GitHub does not swallow a raw
 // `<webview>` as HTML; inside inline code they render literally.
+// Prose in clerk's comments can quote the PR note or Claude's reasons, both of
+// which a fork PR controls. Outside code spans, HTML is escaped, markdown links
+// and images are broken up, bare URLs are shown as code so they are not
+// clickable, and @mentions are shown as code so they notify nobody.
 export const escapeProse = (text: string) =>
-  mapOutsideCode(text, (prose) => prose.replaceAll('<', '&lt;').replaceAll('>', '&gt;'));
+  mapOutsideCode(text, (prose) =>
+    prose
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replace(/[[\]]/g, '\\$&')
+      .replace(
+        /\b(?:[a-z][\w+.-]{0,31}:\/\/|www\.)[^\s`]{0,2047}[^\s`.,;:!?)\]'"]/gi,
+        (url) => `\`${url}\``,
+      )
+      .replace(/(?<![\w`])@[\w-]{1,39}(?:\/[\w.-]{1,100})?/g, (mention) => `\`${mention}\``),
+  );
 
 // A shorter rewrite from the Claude review, shown in place of the mechanical
 // fix when the note is over the length limit.
