@@ -176,8 +176,9 @@ const API_TOKEN =
 // is reported), which keeps the per-line regex work bounded.
 export const MAX_LINT_LINE_LENGTH = 2000;
 
-// The style guide's limit for a one-line note or a single bullet.
-export const MAX_NOTE_LENGTH = 160;
+// The hard limit for a one-line note or a single bullet: a longer one fails
+// the `length` check. REVIEW_TARGET_LENGTH in note-review is the soft target.
+export const MAX_NOTE_LENGTH = 120;
 
 // Backport notes ("Backported fixes for CVE-2026-1234, ...", "Backported a fix
 // in Skia for 123456.") follow a fixed convention and often list every bug they

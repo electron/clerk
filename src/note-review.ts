@@ -49,8 +49,9 @@ export const REVIEW_CANDIDATES = 3;
 // the check either way, so it gets one more try at a usable rewrite.
 export const REVIEW_MAX_ROUNDS = 2;
 export const REVIEW_MAX_ROUNDS_OVER_LIMIT = 3;
-// The length rewrites should aim for; the limit itself is a ceiling.
-export const REVIEW_TARGET_LENGTH = MAX_NOTE_LENGTH - 20;
+// The soft target rewrites aim for; MAX_NOTE_LENGTH is the ceiling that fails
+// the check.
+export const REVIEW_TARGET_LENGTH = 80;
 // Total time a review may take, across every call and SDK retry. reviewNote
 // gives up (as "ok") when this elapses even if a request has not settled yet.
 export const REVIEW_TIMEOUT_MS = 5 * 60_000;

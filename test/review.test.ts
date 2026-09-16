@@ -26,6 +26,7 @@ import {
   REVIEW_MAX_TOKENS,
   REVIEW_MODEL,
   REVIEW_SCHEMA,
+  REVIEW_TARGET_LENGTH,
   REVIEW_TIMEOUT_MS,
   reviewCacheKey,
   reviewNote,
@@ -107,6 +108,7 @@ describe('buildReviewRequest', () => {
   it('asks for short notes', () => {
     const system = buildReviewRequest(input).system as string;
     expect(system).toContain(`at most ${MAX_NOTE_LENGTH} characters`);
+    expect(system).toContain(`Aim for about ${REVIEW_TARGET_LENGTH}`);
     expect(system).toContain('Do not suggest a rewrite to trim words');
   });
 
@@ -659,7 +661,7 @@ describe('reviewNote', () => {
           verdict: 'suggest',
           suggestion: GOOD,
           reasons: [
-            'The note exceeds the 160-character limit.',
+            `The note exceeds the ${MAX_NOTE_LENGTH}-character limit.`,
             'Kept the platform and the API name.',
             'Dropped the internal class name.',
           ],
