@@ -21,7 +21,8 @@
     "nock": "^14.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "vite": "^8.0.16",
+    "vitest": "^5.0.1"
   },
   "scripts": {
     "build": "tsc",
