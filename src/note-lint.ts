@@ -566,7 +566,7 @@ export const createLintCommentBody = ({ findings, fixed }: LintResult, rewrite?:
       .map((reason) => `\n- ${escapeProse(reason)}`)
       .join('');
     suggested =
-      `\n\nSuggested shorter note (written by Claude; it may be wrong, so keep your own facts):\n\n` +
+      `\n\nSuggested shorter note (written by Claude; it may be wrong, so use your best judgment):\n\n` +
       `\`\`\`\n${formatNotesBlock(stripFences(rewrite.suggestion))}\n\`\`\`` +
       (reasons ? `\n${reasons}` : '');
   }
